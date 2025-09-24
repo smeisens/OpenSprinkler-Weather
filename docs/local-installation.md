@@ -67,7 +67,7 @@ pi@OSPi:~ $ git clone https://github.com/OpenSprinkler/OpenSprinkler-Weather.git
 ```
 pi@OSPi:~ $ cd weather
 pi@OSPi:~/weather $ npm install
-pi@OSPi:~/weather $ npm run compile
+pi@OSPi:~/weather $ npm run build
 ```
 **Step 4:** Configure the weather server to use either the OpenWeatherMap API or the Dark Sky API
 
