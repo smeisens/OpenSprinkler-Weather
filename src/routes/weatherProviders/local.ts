@@ -74,8 +74,9 @@ export default class LocalWeatherProvider extends WeatherProvider {
 	}
 
 	protected async getWateringDataInternal( coordinates: GeoCoordinates, pws: PWS | undefined ): Promise< WateringData[] > {
-		// 1. Trim queue to 7 days (if not already trimmed)
+		// 1. Trim queue to keep only last 7 days of observations
 		queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < LOCAL_OBSERVATION_DAYS*24*60*60);
+		
 		if ( queue.length == 0 || queue[0].timestamp - queue[queue.length-1].timestamp < 23*60*60) {
 			console.error( "There is insufficient data to support watering calculation from local PWS." );
 			throw new CodedError( ErrorCode.InsufficientWeatherData );
@@ -83,8 +84,11 @@ export default class LocalWeatherProvider extends WeatherProvider {
 
 		// 2. Determine day boundaries
 		const currentDay = startOfDay(localTime(coordinates));  // today 00:00 local
-		const endTime = getUnixTime(currentDay);
-		const startTime = getUnixTime(subDays(currentDay, 7));
+		const endTime = getUnixTime(currentDay);  // today at midnight (start of today)
+		const startTime = getUnixTime(subDays(currentDay, 7));  // 7 days ago at midnight
+		
+		// Filter to only include data BEFORE today (historical data only)
+		// This is perfect for hybrid mode: local station provides past, external provides future
 		const filteredData = queue.filter(obs => obs.timestamp >= startTime && obs.timestamp < endTime);
 		const data: WateringData[] = [];
 
@@ -92,15 +96,22 @@ export default class LocalWeatherProvider extends WeatherProvider {
 		let dayEnd = currentDay;
 		for (let i = 0; i < 7; i++) {
 			let dayStart = subDays(dayEnd, 1);
-			// collect observations for [dayStart, dayEnd)
-			const dayObs = filteredData.filter(obs => obs.timestamp >= getUnixTime(dayStart) && obs.timestamp < getUnixTime(dayEnd));
+			
+			// Collect observations for this day [dayStart, dayEnd)
+			const dayObs = filteredData.filter(obs => 
+				obs.timestamp >= getUnixTime(dayStart) && obs.timestamp < getUnixTime(dayEnd)
+			);
+			
 			if (dayObs.length === 0) {
 				if (i === 0) {
+					// No data for yesterday - this is critical
 					console.error( "There is insufficient data to support watering calculation from local PWS." );
 					throw new CodedError( ErrorCode.InsufficientWeatherData );
 				}
-				break;  // stop if we hit a gap or ran out of data
+				// No data for older days - stop here, return what we have
+				break;
 			}
+			
 			// 4. Calculate daily averages/totals
 			let cTemp=0, cHumidity=0, cPrecip=0, cSolar=0, cWind=0;
 			const avgTemp = dayObs.reduce((sum, obs) => !isNaN(obs.temp) && ++cTemp ? sum + obs.temp : sum, 0) / cTemp;
@@ -112,16 +123,20 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			const maxHum  = dayObs.reduce((max, obs) => (max < obs.humidity ? obs.humidity : max), -Infinity);
 			const avgSolar= dayObs.reduce((sum, obs) => !isNaN(obs.solarRadiation) && ++cSolar ? sum + obs.solarRadiation : sum, 0) / cSolar;
 			const avgWind = dayObs.reduce((sum, obs) => !isNaN(obs.windSpeed) && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind;
-			// 5. Verify all metrics present
+			
+			// 5. Verify all required metrics are present
 			if (!(cTemp && cHumidity && cPrecip)
 				|| [minTemp, minHum, -maxTemp, -maxHum].includes(Infinity)
 				|| !(cSolar && cWind && cPrecip)) {
 				if (i === 0) {
+					// Missing critical data for yesterday
 					console.error( "There is insufficient data to support watering calculation from local PWS." );
 					throw new CodedError( ErrorCode.InsufficientWeatherData );
 				}
+				// Missing data for older days - stop here
 				break;
 			}
+			
 			// 6. Create WateringData for this day
 			data.push({
 				weatherProvider: "local",
@@ -136,43 +151,13 @@ export default class LocalWeatherProvider extends WeatherProvider {
 				solarRadiation: avgSolar,
 				windSpeed: avgWind
 			});
+			
 			dayEnd = dayStart;  // move to previous day
 		}
+		
+		console.log(`[LocalWeather] Returning ${data.length} days of historical data`);
 		return data;
-
-
-		queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < 24*60*60 );
-
-		if ( queue.length == 0 || queue[ 0 ].timestamp - queue[ queue.length - 1 ].timestamp < 23*60*60 ) {
-			console.error( "There is insufficient data to support watering calculation from local PWS." );
-			throw new CodedError( ErrorCode.InsufficientWeatherData );
-		}
-
-		let cTemp = 0, cHumidity = 0, cPrecip = 0, cSolar = 0, cWind = 0;
-		const result: WateringData = {
-			weatherProvider: "local",
-			temp: queue.reduce( ( sum, obs ) => !isNaN( obs.temp ) && ++cTemp ? sum + obs.temp : sum, 0) / cTemp,
-			humidity: queue.reduce( ( sum, obs ) => !isNaN( obs.humidity ) && ++cHumidity ? sum + obs.humidity : sum, 0) / cHumidity,
-			precip: queue.reduce( ( sum, obs ) => !isNaN( obs.precip ) && ++cPrecip ? sum + obs.precip : sum, 0),
-			periodStartTime: Math.floor( queue[ queue.length - 1 ].timestamp ),
-			minTemp: queue.reduce( (min, obs) => ( min > obs.temp ) ? obs.temp : min, Infinity ),
-			maxTemp: queue.reduce( (max, obs) => ( max < obs.temp ) ? obs.temp : max, -Infinity ),
-			minHumidity: queue.reduce( (min, obs) => ( min > obs.humidity ) ? obs.humidity : min, Infinity ),
-			maxHumidity: queue.reduce( (max, obs) => ( max < obs.humidity ) ? obs.humidity : max, -Infinity ),
-			solarRadiation: queue.reduce( (sum, obs) => !isNaN( obs.solarRadiation ) && ++cSolar ? sum + obs.solarRadiation : sum, 0) / cSolar,
-			windSpeed: queue.reduce( (sum, obs) => !isNaN( obs.windSpeed ) && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind
-		};
-
-		if ( !( cTemp && cHumidity && cPrecip ) ||
-			[ result.minTemp, result.minHumidity, -result.maxTemp, -result.maxHumidity ].includes( Infinity ) ||
-			!( cSolar && cWind && cPrecip )) {
-			console.error( "There is insufficient data to support watering calculation from local PWS." );
-			throw new CodedError( ErrorCode.InsufficientWeatherData );
-		}
-
-		return [result];
-	};
-
+	}
 }
 
 function saveQueue() {
