@@ -16,6 +16,7 @@ import { localTime } from "../weather";
  * - Historical source: Always "local" (hardcoded via LOCAL_PERSISTENCE in .env)
  * - Forecast source: Determined by 'provider' parameter from OpenSprinkler App UI
  */
+ 
 export default class HybridWeatherProvider extends WeatherProvider {
     private localProvider: LocalWeatherProvider;
     private forecastProviders: Map<string, WeatherProvider>;
