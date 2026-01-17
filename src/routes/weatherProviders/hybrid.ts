@@ -16,7 +16,6 @@ import { localTime } from "../weather";
  * - Historical source: Always "local" (hardcoded via LOCAL_PERSISTENCE in .env)
  * - Forecast source: Determined by 'provider' parameter from OpenSprinkler App UI
  */
- 
 export default class HybridWeatherProvider extends WeatherProvider {
     private localProvider: LocalWeatherProvider;
     private forecastProviders: Map<string, WeatherProvider>;
@@ -78,12 +77,11 @@ export default class HybridWeatherProvider extends WeatherProvider {
         try {
             const localResult = await this.localProvider.getWateringDataInternal(coordinates, pws);
             
-            // Filter to only keep historical data (periodStartTime < today)
-            historicalData = localResult.filter(data => 
-                data.periodStartTime < currentDayEpoch
-            );
+            // Local provider now includes today (partial day) + historical days
+            // Keep all of it - it's the most accurate data we have
+            historicalData = localResult;
             
-            console.log(`[HybridWeather] Retrieved ${historicalData.length} days of historical data from local station`);
+            console.log(`[HybridWeather] Retrieved ${historicalData.length} days of data from local station (including today)`);
             
         } catch (err) {
             console.warn("[HybridWeather] Local historical data unavailable:", err);
@@ -113,13 +111,14 @@ export default class HybridWeatherProvider extends WeatherProvider {
         try {
             const forecastResult = await forecastProvider.getWateringDataInternal(coordinates, pws);
             
-            // Filter to only keep forecast data (periodStartTime >= today)
-            // Note: Some providers include today and historical days, so we filter
+            // Filter to only keep FUTURE forecast data (periodStartTime > today)
+            // Exclude today since we already have real measurements from local PWS
+            const tomorrowEpoch = currentDayEpoch + (24 * 60 * 60);
             forecastData = forecastResult.filter(data => 
-                data.periodStartTime >= currentDayEpoch
+                data.periodStartTime >= tomorrowEpoch
             );
             
-            console.log(`[HybridWeather] Retrieved ${forecastData.length} days of forecast data from ${forecastProviderName}`);
+            console.log(`[HybridWeather] Retrieved ${forecastData.length} days of forecast data from ${forecastProviderName} (tomorrow onwards)`);
             
         } catch (err) {
             console.warn(`[HybridWeather] Forecast data from ${forecastProviderName} unavailable:`, err);
@@ -143,8 +142,8 @@ export default class HybridWeatherProvider extends WeatherProvider {
         // 4. Sort by periodStartTime (oldest to newest)
         combinedData.sort((a, b) => a.periodStartTime - b.periodStartTime);
         
-        console.log(`[HybridWeather] Combined data: ${historicalData.length} historical + ${forecastData.length} forecast = ${combinedData.length} total days`);
-        console.log(`[HybridWeather] Data sources: Historical='local', Forecast='${forecastProviderName}'`);
+        console.log(`[HybridWeather] Combined data: ${historicalData.length} days (local+today) + ${forecastData.length} days (forecast) = ${combinedData.length} total days`);
+        console.log(`[HybridWeather] Data sources: Local PWS (historical+today), ${forecastProviderName} (tomorrow+)`);
         
         // 5. Return in reverse chronological order (newest first, as expected by Zimmerman)
         return combinedData.reverse();

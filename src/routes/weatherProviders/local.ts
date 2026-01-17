@@ -84,16 +84,56 @@ export default class LocalWeatherProvider extends WeatherProvider {
 
 		// 2. Determine day boundaries
 		const currentDay = startOfDay(localTime(coordinates));  // today 00:00 local
-		const endTime = getUnixTime(currentDay);  // today at midnight (start of today)
+		const now = Math.floor(Date.now() / 1000);  // current time in epoch
 		const startTime = getUnixTime(subDays(currentDay, 7));  // 7 days ago at midnight
 		
-		// Filter to only include data BEFORE today (historical data only)
-		// This is perfect for hybrid mode: local station provides past, external provides future
-		const filteredData = queue.filter(obs => obs.timestamp >= startTime && obs.timestamp < endTime);
+		// Filter to include data from 7 days ago up to NOW (including today's partial data)
+		// This gives hybrid mode the most accurate recent data from the local station
+		const filteredData = queue.filter(obs => obs.timestamp >= startTime && obs.timestamp <= now);
 		const data: WateringData[] = [];
 
-		// 3. Loop over each day from yesterday back to 7 days ago
-		let dayEnd = currentDay;
+		// 3. Loop over each day from TODAY back to 7 days ago
+		// Start with today (partial day with data up to now)
+		let dayEnd = new Date(now * 1000);  // Current time
+		let dayStart = currentDay;  // Today at midnight
+		
+		// First iteration: Today (partial day)
+		let dayObs = filteredData.filter(obs => 
+			obs.timestamp >= getUnixTime(dayStart) && obs.timestamp <= now
+		);
+		
+		if (dayObs.length > 0) {
+			// Process today's partial data
+			let cTemp=0, cHumidity=0, cPrecip=0, cSolar=0, cWind=0;
+			const avgTemp = dayObs.reduce((sum, obs) => !isNaN(obs.temp) && ++cTemp ? sum + obs.temp : sum, 0) / cTemp;
+			const avgHum  = dayObs.reduce((sum, obs) => !isNaN(obs.humidity) && ++cHumidity ? sum + obs.humidity : sum, 0) / cHumidity;
+			const totalPrecip = dayObs.reduce((sum, obs) => !isNaN(obs.precip) && ++cPrecip ? sum + obs.precip : sum, 0);
+			const minTemp = dayObs.reduce((min, obs) => (min > obs.temp ? obs.temp : min), Infinity);
+			const maxTemp = dayObs.reduce((max, obs) => (max < obs.temp ? obs.temp : max), -Infinity);
+			const minHum  = dayObs.reduce((min, obs) => (min > obs.humidity ? obs.humidity : min), Infinity);
+			const maxHum  = dayObs.reduce((max, obs) => (max < obs.humidity ? obs.humidity : max), -Infinity);
+			const avgSolar= dayObs.reduce((sum, obs) => !isNaN(obs.solarRadiation) && ++cSolar ? sum + obs.solarRadiation : sum, 0) / cSolar;
+			const avgWind = dayObs.reduce((sum, obs) => !isNaN(obs.windSpeed) && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind;
+			
+			if (cTemp && cHumidity && ![minTemp, minHum, -maxTemp, -maxHum].includes(Infinity) && cSolar && cWind) {
+				data.push({
+					weatherProvider: "local",
+					periodStartTime: Math.floor(getUnixTime(dayStart)),
+					temp: avgTemp,
+					humidity: avgHum,
+					precip: totalPrecip,
+					minTemp: minTemp,
+					maxTemp: maxTemp,
+					minHumidity: minHum,
+					maxHumidity: maxHum,
+					solarRadiation: avgSolar,
+					windSpeed: avgWind
+				});
+			}
+		}
+		
+		// Continue with previous complete days (yesterday through 7 days ago)
+		dayEnd = currentDay;
 		for (let i = 0; i < 7; i++) {
 			let dayStart = subDays(dayEnd, 1);
 			
@@ -103,11 +143,6 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			);
 			
 			if (dayObs.length === 0) {
-				if (i === 0) {
-					// No data for yesterday - this is critical
-					console.error( "There is insufficient data to support watering calculation from local PWS." );
-					throw new CodedError( ErrorCode.InsufficientWeatherData );
-				}
 				// No data for older days - stop here, return what we have
 				break;
 			}
@@ -128,11 +163,6 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			if (!(cTemp && cHumidity && cPrecip)
 				|| [minTemp, minHum, -maxTemp, -maxHum].includes(Infinity)
 				|| !(cSolar && cWind && cPrecip)) {
-				if (i === 0) {
-					// Missing critical data for yesterday
-					console.error( "There is insufficient data to support watering calculation from local PWS." );
-					throw new CodedError( ErrorCode.InsufficientWeatherData );
-				}
 				// Missing data for older days - stop here
 				break;
 			}
