@@ -32,6 +32,7 @@ import DWDWeatherProvider from "./weatherProviders/DWD";
 import LocalWeatherProvider from "./weatherProviders/local";
 import OpenMeteoWeatherProvider from "./weatherProviders/OpenMeteo";
 import PirateWeatherWeatherProvider from "./weatherProviders/PirateWeather";
+import HybridWeatherProvider from "./weatherProviders/Hybrid";
 import GoogleMapsGeocoder from "./geocoders/GoogleMaps";
 import WUndergroundGeocoder from "./geocoders/WUnderground";
 import { TZDate } from "@date-fns/tz";
@@ -46,6 +47,13 @@ const WEATHER_PROVIDERS: { [K in Exclude<WeatherProviderShortId, "mock">]: Weath
     PW: new PirateWeatherWeatherProvider(),
     WU: new WUndergroundWeatherProvider(),
 };
+
+// Initialize Hybrid provider with access to all forecast providers (excluding 'local')
+const HYBRID_PROVIDER = new HybridWeatherProvider(
+    new Map(
+        Object.entries(WEATHER_PROVIDERS).filter(([key]) => key !== 'local')
+    )
+);
 
 const GEOCODERS: { [name: string]: Geocoder } = {
     GoogleMaps: new GoogleMapsGeocoder(),
@@ -386,9 +394,18 @@ export const getWateringData = async function( req: express.Request, res: expres
 		provider = process.env.WEATHER_PROVIDER;
 	}
 
-	if( pws && pws.id ){
+	// Check if hybrid mode is enabled via environment variable
+	const isHybridMode = process.env.WEATHER_PROVIDER === 'hybrid';
+
+	if (isHybridMode) {
+		// HYBRID MODE: Use local for historical, App UI selection for forecast
+		weatherProvider = HYBRID_PROVIDER;
+		console.log(`[Weather] Hybrid mode active. Forecast provider: ${provider || 'Apple'}`);
+	} else if (pws && pws.id) {
+		// Standard PWS mode
 		weatherProvider = PWS_WEATHER_PROVIDER;
-	}else{
+	} else {
+		// Standard single-provider mode
 		if (typeof WEATHER_PROVIDERS[provider] === 'object') {
 			weatherProvider = WEATHER_PROVIDERS[provider];
 		} else {
@@ -414,6 +431,21 @@ export const getWateringData = async function( req: express.Request, res: expres
 	// Calculate the watering scale if it wasn't found in the cache.
 	let adjustmentMethodResponse: AdjustmentMethodResponse;
 	try {
+		if (isHybridMode && weatherProvider instanceof HybridWeatherProvider) {
+			// HYBRID MODE: Get forecast provider from App UI selection
+			const forecastProvider = provider || 'Apple';  // Fallback to Apple if not specified
+			
+			console.log(`[Weather] Fetching hybrid data: local (historical) + ${forecastProvider} (forecast)`);
+			
+			// Fetch combined watering data before calling adjustment method
+			await weatherProvider.getWateringDataWithForecastProvider(
+				coordinates,
+				pws,
+				forecastProvider
+			);
+		}
+		
+		// Call adjustment method (works for both hybrid and standard modes)
 		adjustmentMethodResponse = await adjustmentMethod.calculateWateringScale(
 			adjustmentOptions, coordinates, weatherProvider, pws
 		);
