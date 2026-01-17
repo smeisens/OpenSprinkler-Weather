@@ -32,7 +32,7 @@ import DWDWeatherProvider from "./weatherProviders/DWD";
 import LocalWeatherProvider from "./weatherProviders/local";
 import OpenMeteoWeatherProvider from "./weatherProviders/OpenMeteo";
 import PirateWeatherWeatherProvider from "./weatherProviders/PirateWeather";
-import HybridWeatherProvider from "./weatherProviders/Hybrid";
+import HybridWeatherProvider from "./weatherProviders/hybrid";
 import GoogleMapsGeocoder from "./geocoders/GoogleMaps";
 import WUndergroundGeocoder from "./geocoders/WUnderground";
 import { TZDate } from "@date-fns/tz";
