@@ -32,7 +32,7 @@ import DWDWeatherProvider from "./weatherProviders/DWD";
 import LocalWeatherProvider from "./weatherProviders/local";
 import OpenMeteoWeatherProvider from "./weatherProviders/OpenMeteo";
 import PirateWeatherWeatherProvider from "./weatherProviders/PirateWeather";
-import HybridWeatherProvider from "./weatherProviders/hybrid";
+import HybridWeatherProvider from "./weatherProviders/Hybrid";
 import GoogleMapsGeocoder from "./geocoders/GoogleMaps";
 import WUndergroundGeocoder from "./geocoders/WUnderground";
 import { TZDate } from "@date-fns/tz";
@@ -390,17 +390,20 @@ export const getWateringData = async function( req: express.Request, res: expres
 	let weatherProvider: WeatherProvider;
 	let provider: string = adjustmentOptions.provider;
 
-	if ( !provider && process.env.WEATHER_PROVIDER ) {
-		provider = process.env.WEATHER_PROVIDER;
-	}
-
 	// Check if hybrid mode is enabled via environment variable
 	const isHybridMode = process.env.WEATHER_PROVIDER === 'hybrid';
+
+	// In hybrid mode, don't fall back to env.WEATHER_PROVIDER for forecast provider
+	if ( !provider && process.env.WEATHER_PROVIDER && !isHybridMode ) {
+		provider = process.env.WEATHER_PROVIDER;
+	}
 
 	if (isHybridMode) {
 		// HYBRID MODE: Use local for historical, App UI selection for forecast
 		weatherProvider = HYBRID_PROVIDER;
-		console.log(`[Weather] Hybrid mode active. Forecast provider: ${provider || 'Apple'}`);
+		// Use provider from App, or default to Apple (never use 'hybrid' as provider name)
+		const forecastProvider = provider && provider !== 'hybrid' ? provider : 'Apple';
+		console.log(`[Weather] Hybrid mode active. Forecast provider: ${forecastProvider}`);
 	} else if (pws && pws.id) {
 		// Standard PWS mode
 		weatherProvider = PWS_WEATHER_PROVIDER;
@@ -433,7 +436,8 @@ export const getWateringData = async function( req: express.Request, res: expres
 	try {
 		if (isHybridMode && weatherProvider instanceof HybridWeatherProvider) {
 			// HYBRID MODE: Get forecast provider from App UI selection
-			const forecastProvider = provider || 'Apple';  // Fallback to Apple if not specified
+			// Never use 'hybrid' as provider name - default to Apple
+			const forecastProvider = provider && provider !== 'hybrid' ? provider : 'Apple';
 			
 			console.log(`[Weather] Fetching hybrid data: local (historical) + ${forecastProvider} (forecast)`);
 			
