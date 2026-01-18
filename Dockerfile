@@ -26,7 +26,7 @@ RUN npm run build
 
 FROM node:lts-alpine
 
-EXPOSE 3000
+EXPOSE 4000
 EXPOSE 8080
 
 WORKDIR /weather
