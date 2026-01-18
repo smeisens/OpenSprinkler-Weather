@@ -35,7 +35,7 @@ switch (process.env.LOG_LEVEL) {
 const logger = pino({ level: getLogLevel() });
 
 const host = process.env.HOST || "127.0.0.1";
-const port = parseInt(process.env.HTTP_PORT) || 4000;
+const port = parseInt(process.env.HTTP_PORT) || 3000;
 
 export let pws = process.env.PWS || "none";
 export const app = express();
