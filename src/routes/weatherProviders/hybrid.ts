@@ -9,13 +9,14 @@ import { localTime } from "../weather";
  * HybridWeatherProvider combines local PWS historical data with external forecast data.
  * 
  * Design Philosophy:
- * - HISTORICAL (past): Uses local weather station for accurate, measured data
+ * - HISTORICAL and PRESENT (past and now): Uses local weather station for accurate, measured data
  * - FORECAST (future): Uses external provider (Apple, OWM, etc.) for predictions
  * 
  * Configuration:
- * - Historical source: Always "local" (hardcoded via LOCAL_PERSISTENCE in .env)
+ * - Historical and present source: Always "local"
  * - Forecast source: Determined by 'provider' parameter from OpenSprinkler App UI
- */
+ **/
+ 
 export default class HybridWeatherProvider extends WeatherProvider {
     private localProvider: LocalWeatherProvider;
     private forecastProviders: Map<string, WeatherProvider>;
@@ -29,7 +30,8 @@ export default class HybridWeatherProvider extends WeatherProvider {
     /**
      * Get weather data for display in the mobile app.
      * Uses local station data as primary source, falls back to forecast provider if unavailable.
-     */
+     **/
+     
     protected async getWeatherDataInternal(
         coordinates: GeoCoordinates, 
         pws: PWS | undefined
@@ -53,14 +55,15 @@ export default class HybridWeatherProvider extends WeatherProvider {
     }
 
     /**
-     * Get watering data combining local historical and external forecast.
+     * Get watering data combining local historical and present + external forecast.
      * This is called from weather.ts with the forecast provider name from App UI.
      * 
      * @param coordinates Geographic coordinates
      * @param pws PWS information (used for local station)
      * @param forecastProviderName Name of the forecast provider (from App UI selection)
      * @returns Array of WateringData in reverse chronological order
-     */
+     **/
+     
     public async getWateringDataWithForecastProvider(
         coordinates: GeoCoordinates,
         pws: PWS | undefined,
@@ -70,14 +73,14 @@ export default class HybridWeatherProvider extends WeatherProvider {
         const currentDay = startOfDay(localTime(coordinates));
         const currentDayEpoch = getUnixTime(currentDay);
 
-        // 1. Get historical data from local weather station
+        // 1. Get historical and present data from local weather station
         let historicalData: readonly WateringData[] = [];
         let localDataAvailable = true;
         
         try {
             const localResult = await this.localProvider.getWateringDataInternal(coordinates, pws);
             
-            // Local provider now includes today (partial day) + historical days
+            // Local provider includes today (partial day) + historical days
             // Keep all of it - it's the most accurate data we have
             historicalData = localResult;
             
@@ -112,7 +115,7 @@ export default class HybridWeatherProvider extends WeatherProvider {
             const forecastResult = await forecastProvider.getWateringDataInternal(coordinates, pws);
             
             // Filter to only keep FUTURE forecast data (periodStartTime > today)
-            // Exclude today since we already have real measurements from local PWS
+     
             const tomorrowEpoch = currentDayEpoch + (24 * 60 * 60);
             forecastData = forecastResult.filter(data => 
                 data.periodStartTime >= tomorrowEpoch
@@ -132,7 +135,7 @@ export default class HybridWeatherProvider extends WeatherProvider {
             return historicalData;
         }
 
-        // 3. Combine historical + forecast
+        // 3. Combine historical and present + forecast
         const combinedData = [...historicalData, ...forecastData];
         
         if (combinedData.length === 0) {
@@ -165,6 +168,7 @@ export default class HybridWeatherProvider extends WeatherProvider {
 
     /**
      * Hybrid provider should cache until end of day since historical data won't change.
+     * present data is changing!
      * Forecast data gets refreshed according to the forecast provider's cache settings.
      */
     public shouldCacheWateringScale(): boolean {
