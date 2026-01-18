@@ -15,7 +15,7 @@ RUN rm Baseline_ETo_Data-Pass_*.bin
 
 FROM node:lts-alpine AS build_node
 WORKDIR /weather
-# Version: 3.1.1 - Updated 2026-01-17
+
 COPY /tsconfig.json ./
 COPY /package.json ./
 RUN npm install
@@ -26,7 +26,7 @@ RUN npm run build
 
 FROM node:lts-alpine
 
-EXPOSE 4000
+EXPOSE 3000
 EXPOSE 8080
 
 WORKDIR /weather
