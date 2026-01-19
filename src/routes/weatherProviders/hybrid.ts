@@ -6,17 +6,25 @@ import { getUnixTime, startOfDay } from "date-fns";
 import { localTime } from "../weather";
 
 /**
- * HybridWeatherProvider combines local PWS historical data with external forecast data.
+ * HybridWeatherProvider combines local PWS data with external forecast data.
  * 
  * Design Philosophy:
- * - HISTORICAL and PRESENT (past and now): Uses local weather station for accurate, measured data
- * - FORECAST (future): Uses external provider (Apple, OWM, etc.) for predictions
+ * - CURRENT WEATHER (now): Uses local weather station for real-time conditions
+ *   → Used for rain delay decisions and current weather display in app
+ * - HISTORICAL DATA (past 7 days): Uses local weather station for accurate measurements
+ *   → Provides actual temperature, humidity, rainfall, solar, wind from your station
+ * - FORECAST DATA (next 7 days): Uses external provider (Apple, OpenMeteo, etc.) for predictions
+ *   → Professional forecasts for future watering calculations
  * 
  * Configuration:
- * - Historical and present source: Always "local"
- * - Forecast source: Determined by 'provider' parameter from OpenSprinkler App UI
- **/
- 
+ * - Current & Historical source: Always "local" PWS (requires LOCAL_PERSISTENCE=true in .env)
+ * - Forecast source: Selected via 'Weather Provider' in OpenSprinkler App UI
+ * 
+ * Why Hybrid?
+ * - Local PWS gives you EXACT past conditions (better than any forecast)
+ * - Professional forecasts give you reliable FUTURE predictions (better than extrapolation)
+ * - Zimmerman algorithm gets best of both worlds for optimal watering decisions
+ */
 export default class HybridWeatherProvider extends WeatherProvider {
     private localProvider: LocalWeatherProvider;
     private forecastProviders: Map<string, WeatherProvider>;
@@ -28,21 +36,31 @@ export default class HybridWeatherProvider extends WeatherProvider {
     }
 
     /**
-     * Get weather data for display in the mobile app.
-     * Uses local station data as primary source, falls back to forecast provider if unavailable.
-     **/
-     
+     * Get current weather data for display in the mobile app and rain delay decisions.
+     * 
+     * This method returns REAL-TIME conditions from your local weather station.
+     * It ensures that current rain, temperature, and humidity are from actual measurements,
+     * not forecasts. This is critical for accurate rain delay activation.
+     * 
+     * Data returned represents conditions RIGHT NOW (based on last 24 hours of observations).
+     * Falls back to forecast provider only if local station data is unavailable.
+     * 
+     * @param coordinates Geographic coordinates
+     * @param pws PWS information
+     * @returns Current weather conditions from local station (or forecast fallback)
+     */
     protected async getWeatherDataInternal(
         coordinates: GeoCoordinates, 
         pws: PWS | undefined
     ): Promise<WeatherData> {
         try {
             // Try to get current weather from local station first
+            // This ensures rain delay and current conditions use real measurements
             return await this.localProvider.getWeatherDataInternal(coordinates, pws);
         } catch (err) {
             console.warn("[HybridWeather] Local weather data unavailable, falling back to forecast provider:", err);
             
-            // Fallback to default forecast provider
+            // Fallback to default forecast provider if local unavailable
             const defaultProvider = this.forecastProviders.get('Apple') || 
                                    Array.from(this.forecastProviders.values())[0];
             
@@ -55,15 +73,32 @@ export default class HybridWeatherProvider extends WeatherProvider {
     }
 
     /**
-     * Get watering data combining local historical and present + external forecast.
-     * This is called from weather.ts with the forecast provider name from App UI.
+     * Get watering data combining local historical measurements with external forecasts.
+     * 
+     * This is the core method for Zimmerman watering calculations in hybrid mode.
+     * It combines the best of both worlds:
+     * 
+     * LOCAL PWS (past + today):
+     * - Day -7 to Day -1: Complete days with actual measurements
+     * - Day 0 (today): Partial day with measurements up to current time
+     * → These are YOUR exact conditions: temp, humidity, rain, solar, wind
+     * 
+     * FORECAST PROVIDER (future):
+     * - Day +1 to Day +7: Professional weather forecasts
+     * → Reliable predictions for upcoming week
+     * 
+     * Example timeline (if called at 18:00 on Jan 18):
+     * - Jan 11-17: Your station's actual measurements (7 complete days)
+     * - Jan 18 (00:00-18:00): Your station's measurements for today so far
+     * - Jan 19-25: Forecast provider's predictions (7 future days)
+     * 
+     * The Zimmerman algorithm uses all this data to calculate optimal watering.
      * 
      * @param coordinates Geographic coordinates
      * @param pws PWS information (used for local station)
      * @param forecastProviderName Name of the forecast provider (from App UI selection)
-     * @returns Array of WateringData in reverse chronological order
-     **/
-     
+     * @returns Array of WateringData in reverse chronological order (newest first)
+     */
     public async getWateringDataWithForecastProvider(
         coordinates: GeoCoordinates,
         pws: PWS | undefined,
@@ -73,15 +108,15 @@ export default class HybridWeatherProvider extends WeatherProvider {
         const currentDay = startOfDay(localTime(coordinates));
         const currentDayEpoch = getUnixTime(currentDay);
 
-        // 1. Get historical and present data from local weather station
+        // 1. Get historical + today's data from local weather station
         let historicalData: readonly WateringData[] = [];
         let localDataAvailable = true;
         
         try {
             const localResult = await this.localProvider.getWateringDataInternal(coordinates, pws);
             
-            // Local provider includes today (partial day) + historical days
-            // Keep all of it - it's the most accurate data we have
+            // Local provider returns past 7 days + today (partial day up to now)
+            // This is all MEASURED data from your station - keep all of it!
             historicalData = localResult;
             
             console.log(`[HybridWeather] Retrieved ${historicalData.length} days of data from local station (including today)`);
@@ -92,7 +127,7 @@ export default class HybridWeatherProvider extends WeatherProvider {
             // Continue without local data - will use forecast for everything
         }
 
-        // 2. Get forecast data from external provider
+        // 2. Get forecast data from external provider (selected in App UI)
         let forecastData: readonly WateringData[] = [];
         
         // Determine which forecast provider to use (from App UI selection)
@@ -114,8 +149,9 @@ export default class HybridWeatherProvider extends WeatherProvider {
         try {
             const forecastResult = await forecastProvider.getWateringDataInternal(coordinates, pws);
             
-            // Filter to only keep FUTURE forecast data (periodStartTime > today)
-     
+            // Filter to only keep FUTURE forecast data (starting tomorrow)
+            // We exclude today because we already have real measurements from local PWS
+            // This ensures today's data is always actual conditions, not predictions
             const tomorrowEpoch = currentDayEpoch + (24 * 60 * 60);
             forecastData = forecastResult.filter(data => 
                 data.periodStartTime >= tomorrowEpoch
@@ -135,7 +171,7 @@ export default class HybridWeatherProvider extends WeatherProvider {
             return historicalData;
         }
 
-        // 3. Combine historical and present + forecast
+        // 3. Combine local measurements + forecast predictions
         const combinedData = [...historicalData, ...forecastData];
         
         if (combinedData.length === 0) {
@@ -154,8 +190,12 @@ export default class HybridWeatherProvider extends WeatherProvider {
 
     /**
      * Standard getWateringDataInternal implementation.
-     * Note: This won't be called directly when using hybrid mode,
-     * instead getWateringDataWithForecastProvider is called from weather.ts
+     * 
+     * Note: This won't be called directly when using hybrid mode.
+     * Instead, getWateringDataWithForecastProvider() is called from weather.ts
+     * to properly combine local and forecast data.
+     * 
+     * This method exists as a fallback and returns only local station data.
      */
     protected async getWateringDataInternal(
         coordinates: GeoCoordinates, 
@@ -167,9 +207,11 @@ export default class HybridWeatherProvider extends WeatherProvider {
     }
 
     /**
-     * Hybrid provider should cache until end of day since historical data won't change.
-     * present data is changing!
-     * Forecast data gets refreshed according to the forecast provider's cache settings.
+     * Cache settings for hybrid provider.
+     * 
+     * Historical data from local station doesn't change (past is past),
+     * so we can cache until end of day. Forecast data gets refreshed
+     * according to the forecast provider's own cache settings.
      */
     public shouldCacheWateringScale(): boolean {
         return true;
