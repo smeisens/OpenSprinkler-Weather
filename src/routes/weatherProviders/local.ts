@@ -74,8 +74,8 @@ export default class LocalWeatherProvider extends WeatherProvider {
 	}
 
 	protected async getWateringDataInternal( coordinates: GeoCoordinates, pws: PWS | undefined ): Promise< WateringData[] > {
-		// 1. Trim queue to keep only last 7 days of observations
-		queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < LOCAL_OBSERVATION_DAYS*24*60*60);
+		// Note: Queue trimming is handled by saveQueue() which runs every 30 minutes
+		// DO NOT trim the global queue here as it causes data loss!
 		
 		if ( queue.length == 0 || queue[0].timestamp - queue[queue.length-1].timestamp < 23*60*60) {
 			console.error( "There is insufficient data to support watering calculation from local PWS." );
@@ -199,7 +199,7 @@ function saveQueue() {
 	}
 }
 
-if ( process.env.LOCAL_PERSISTENCE ) {
+if ( process.env.WEATHER_PROVIDER === "local" && process.env.LOCAL_PERSISTENCE ) {
 	if ( fs.existsSync( "observations.json" ) ) {
 		try {
 			queue = JSON.parse( fs.readFileSync( "observations.json", "utf8" ) );
