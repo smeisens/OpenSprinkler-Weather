@@ -1,5 +1,6 @@
 import express	from "express";
 import fs from "fs";
+import path from "path";
 import { startOfDay, subDays, getUnixTime } from "date-fns";
 import { localTime } from "../weather";
 
@@ -13,6 +14,11 @@ var queue: Array<Observation> = [],
 	lastRainCount: number;
 
 const LOCAL_OBSERVATION_DAYS = 7;
+
+// Configure data directory from environment variable or use default
+// Using PERSISTENCE_LOCATION as per PR #144, but with path.join() for cross-platform compatibility (Copilot suggestion)
+const dataDir = process.env.PERSISTENCE_LOCATION || path.join(__dirname, '..', '..', 'data');
+const observationsPath = path.join(dataDir, 'observations.json');
 
 function getMeasurement(req: express.Request, key: string): number {
 	let value: number;
@@ -193,16 +199,20 @@ export default class LocalWeatherProvider extends WeatherProvider {
 function saveQueue() {
 	queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < (LOCAL_OBSERVATION_DAYS+1)*24*60*60 );
 	try {
-		fs.writeFileSync( "observations.json" , JSON.stringify( queue ), "utf8" );
+		// Ensure data directory exists
+		if (!fs.existsSync(dataDir)) {
+			fs.mkdirSync(dataDir, { recursive: true });
+		}
+		fs.writeFileSync( observationsPath , JSON.stringify( queue ), "utf8" );
 	} catch ( err ) {
 		console.error( "Error saving historical observations to local storage.", err );
 	}
 }
 
 if ( process.env.WEATHER_PROVIDER === "local" && process.env.LOCAL_PERSISTENCE ) {
-	if ( fs.existsSync( "observations.json" ) ) {
+	if ( fs.existsSync( observationsPath ) ) {
 		try {
-			queue = JSON.parse( fs.readFileSync( "observations.json", "utf8" ) );
+			queue = JSON.parse( fs.readFileSync( observationsPath, "utf8" ) );
 			queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < (LOCAL_OBSERVATION_DAYS+1)*24*60*60 );
 		} catch ( err ) {
 			console.error( "Error reading historical observations from local storage.", err );
