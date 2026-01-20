@@ -11,7 +11,7 @@ import { getParameter } from "../weather";
 
 var queue: Array<Observation> = [],
 	lastRainEpoch = 0,
-	lastRainCount: number;
+	lastRainCount = 0;  // Initialize to 0 instead of undefined
 
 const LOCAL_OBSERVATION_DAYS = 7;
 
@@ -20,26 +20,48 @@ const LOCAL_OBSERVATION_DAYS = 7;
 const dataDir = process.env.PERSISTENCE_LOCATION || path.join(__dirname, '..', '..', 'data');
 const observationsPath = path.join(dataDir, 'observations.json');
 
-function getMeasurement(req: express.Request, key: string): number {
+function getMeasurement(req: express.Request, key: string): number | undefined {
 	let value: number;
 
 	return ( key in req.query ) && !isNaN( value = parseFloat( getParameter(req.query[key]) ) ) && ( value !== -9999.0 ) ? value : undefined;
 }
 
 export const captureWUStream = async function( req: express.Request, res: express.Response ) {
-	let rainCount = getMeasurement(req, "dailyrainin");
+	const rainCount = getMeasurement(req, "dailyrainin");
+	const temp = getMeasurement(req, "tempf");
+	const humidity = getMeasurement(req, "humidity");
+	const windSpeed = getMeasurement(req, "windspeedmph");
+	const solarRadiation = getMeasurement(req, "solarradiation");
+	const rainin = getMeasurement(req, "rainin");
+
+	// Calculate precipitation safely
+	let precip: number | undefined;
+	if (typeof rainCount === "number" && typeof lastRainCount === "number") {
+		// Handle rain counter reset (when new value is less than previous)
+		precip = rainCount < lastRainCount ? rainCount : rainCount - lastRainCount;
+	} else if (typeof rainCount === "number") {
+		// First reading or lastRainCount was invalid
+		precip = rainCount;
+	}
 
 	const obs: Observation = {
 		timestamp: req.query.dateutc === "now" ? Math.floor(Date.now()/1000) : Math.floor(new Date(String(req.query.dateutc) + "Z").getTime()/1000),
-		temp: getMeasurement(req, "tempf"),
-		humidity: getMeasurement(req, "humidity"),
-		windSpeed: getMeasurement(req, "windspeedmph"),
-		solarRadiation: getMeasurement(req, "solarradiation") * 24 / 1000,	// Convert to kWh/m^2 per day
-		precip: rainCount < lastRainCount ? rainCount : rainCount - lastRainCount,
+		temp: temp,
+		humidity: humidity,
+		windSpeed: windSpeed,
+		solarRadiation: typeof solarRadiation === "number" ? solarRadiation * 24 / 1000 : undefined,	// Convert to kWh/m^2 per day only if valid
+		precip: precip,
 	};
 
-	lastRainEpoch = getMeasurement(req, "rainin") > 0 ? obs.timestamp : lastRainEpoch;
-	lastRainCount = isNaN(rainCount) ? lastRainCount : rainCount;
+	// Update lastRainEpoch only if rainin is a valid number > 0
+	if (typeof rainin === "number" && rainin > 0) {
+		lastRainEpoch = obs.timestamp;
+	}
+	
+	// Update lastRainCount only if rainCount is a valid number
+	if (typeof rainCount === "number") {
+		lastRainCount = rainCount;
+	}
 
 	queue.unshift(obs);
 
@@ -56,15 +78,18 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			throw "There is insufficient data to support Weather response from local PWS.";
 		}
 
+		// Get most recent observation
+		const latest = queue[0];
+
 		const weather: WeatherData = {
 			weatherProvider: "local",
-			temp: Math.floor( queue[ 0 ].temp ) || undefined,
+			temp: typeof latest.temp === "number" ? Math.floor(latest.temp) : undefined,
 			minTemp: undefined,
 			maxTemp: undefined,
-			humidity: Math.floor( queue[ 0 ].humidity ) || undefined ,
-			wind: Math.floor( queue[ 0 ].windSpeed * 10 ) / 10 || undefined,
+			humidity: typeof latest.humidity === "number" ? Math.floor(latest.humidity) : undefined,
+			wind: typeof latest.windSpeed === "number" ? Math.floor(latest.windSpeed * 10) / 10 : undefined,
 			raining: false,
-			precip: Math.floor( queue.reduce( ( sum, obs ) => sum + ( obs.precip || 0 ), 0) * 100 ) / 100,
+			precip: Math.floor( queue.reduce( ( sum, obs ) => sum + ( typeof obs.precip === "number" ? obs.precip : 0 ), 0) * 100 ) / 100,
 			description: "",
 			icon: "01d",
 			region: undefined,
@@ -111,15 +136,15 @@ export default class LocalWeatherProvider extends WeatherProvider {
 		if (dayObs.length > 0) {
 			// Process today's partial data
 			let cTemp=0, cHumidity=0, cPrecip=0, cSolar=0, cWind=0;
-			const avgTemp = dayObs.reduce((sum, obs) => !isNaN(obs.temp) && ++cTemp ? sum + obs.temp : sum, 0) / cTemp;
-			const avgHum  = dayObs.reduce((sum, obs) => !isNaN(obs.humidity) && ++cHumidity ? sum + obs.humidity : sum, 0) / cHumidity;
-			const totalPrecip = dayObs.reduce((sum, obs) => !isNaN(obs.precip) && ++cPrecip ? sum + obs.precip : sum, 0);
-			const minTemp = dayObs.reduce((min, obs) => (min > obs.temp ? obs.temp : min), Infinity);
-			const maxTemp = dayObs.reduce((max, obs) => (max < obs.temp ? obs.temp : max), -Infinity);
-			const minHum  = dayObs.reduce((min, obs) => (min > obs.humidity ? obs.humidity : min), Infinity);
-			const maxHum  = dayObs.reduce((max, obs) => (max < obs.humidity ? obs.humidity : max), -Infinity);
-			const avgSolar= dayObs.reduce((sum, obs) => !isNaN(obs.solarRadiation) && ++cSolar ? sum + obs.solarRadiation : sum, 0) / cSolar;
-			const avgWind = dayObs.reduce((sum, obs) => !isNaN(obs.windSpeed) && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind;
+			const avgTemp = dayObs.reduce((sum, obs) => typeof obs.temp === "number" && ++cTemp ? sum + obs.temp : sum, 0) / cTemp;
+			const avgHum  = dayObs.reduce((sum, obs) => typeof obs.humidity === "number" && ++cHumidity ? sum + obs.humidity : sum, 0) / cHumidity;
+			const totalPrecip = dayObs.reduce((sum, obs) => typeof obs.precip === "number" && ++cPrecip ? sum + obs.precip : sum, 0);
+			const minTemp = dayObs.reduce((min, obs) => (typeof obs.temp === "number" && min > obs.temp ? obs.temp : min), Infinity);
+			const maxTemp = dayObs.reduce((max, obs) => (typeof obs.temp === "number" && max < obs.temp ? obs.temp : max), -Infinity);
+			const minHum  = dayObs.reduce((min, obs) => (typeof obs.humidity === "number" && min > obs.humidity ? obs.humidity : min), Infinity);
+			const maxHum  = dayObs.reduce((max, obs) => (typeof obs.humidity === "number" && max < obs.humidity ? obs.humidity : max), -Infinity);
+			const avgSolar= dayObs.reduce((sum, obs) => typeof obs.solarRadiation === "number" && ++cSolar ? sum + obs.solarRadiation : sum, 0) / cSolar;
+			const avgWind = dayObs.reduce((sum, obs) => typeof obs.windSpeed === "number" && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind;
 			
 			if (cTemp && cHumidity && ![minTemp, minHum, -maxTemp, -maxHum].includes(Infinity) && cSolar && cWind) {
 				data.push({
@@ -155,15 +180,15 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			
 			// 4. Calculate daily averages/totals
 			let cTemp=0, cHumidity=0, cPrecip=0, cSolar=0, cWind=0;
-			const avgTemp = dayObs.reduce((sum, obs) => !isNaN(obs.temp) && ++cTemp ? sum + obs.temp : sum, 0) / cTemp;
-			const avgHum  = dayObs.reduce((sum, obs) => !isNaN(obs.humidity) && ++cHumidity ? sum + obs.humidity : sum, 0) / cHumidity;
-			const totalPrecip = dayObs.reduce((sum, obs) => !isNaN(obs.precip) && ++cPrecip ? sum + obs.precip : sum, 0);
-			const minTemp = dayObs.reduce((min, obs) => (min > obs.temp ? obs.temp : min), Infinity);
-			const maxTemp = dayObs.reduce((max, obs) => (max < obs.temp ? obs.temp : max), -Infinity);
-			const minHum  = dayObs.reduce((min, obs) => (min > obs.humidity ? obs.humidity : min), Infinity);
-			const maxHum  = dayObs.reduce((max, obs) => (max < obs.humidity ? obs.humidity : max), -Infinity);
-			const avgSolar= dayObs.reduce((sum, obs) => !isNaN(obs.solarRadiation) && ++cSolar ? sum + obs.solarRadiation : sum, 0) / cSolar;
-			const avgWind = dayObs.reduce((sum, obs) => !isNaN(obs.windSpeed) && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind;
+			const avgTemp = dayObs.reduce((sum, obs) => typeof obs.temp === "number" && ++cTemp ? sum + obs.temp : sum, 0) / cTemp;
+			const avgHum  = dayObs.reduce((sum, obs) => typeof obs.humidity === "number" && ++cHumidity ? sum + obs.humidity : sum, 0) / cHumidity;
+			const totalPrecip = dayObs.reduce((sum, obs) => typeof obs.precip === "number" && ++cPrecip ? sum + obs.precip : sum, 0);
+			const minTemp = dayObs.reduce((min, obs) => (typeof obs.temp === "number" && min > obs.temp ? obs.temp : min), Infinity);
+			const maxTemp = dayObs.reduce((max, obs) => (typeof obs.temp === "number" && max < obs.temp ? obs.temp : max), -Infinity);
+			const minHum  = dayObs.reduce((min, obs) => (typeof obs.humidity === "number" && min > obs.humidity ? obs.humidity : min), Infinity);
+			const maxHum  = dayObs.reduce((max, obs) => (typeof obs.humidity === "number" && max < obs.humidity ? obs.humidity : max), -Infinity);
+			const avgSolar= dayObs.reduce((sum, obs) => typeof obs.solarRadiation === "number" && ++cSolar ? sum + obs.solarRadiation : sum, 0) / cSolar;
+			const avgWind = dayObs.reduce((sum, obs) => typeof obs.windSpeed === "number" && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind;
 			
 			// 5. Verify all required metrics are present
 			if (!(cTemp && cHumidity && cPrecip)
@@ -209,24 +234,28 @@ function saveQueue() {
 	}
 }
 
-if ( process.env.WEATHER_PROVIDER === "local" && process.env.LOCAL_PERSISTENCE ) {
+if ( process.env.LOCAL_PERSISTENCE ) {
+	// Load persisted observations on startup (works for both 'local' and 'hybrid' providers)
 	if ( fs.existsSync( observationsPath ) ) {
 		try {
 			queue = JSON.parse( fs.readFileSync( observationsPath, "utf8" ) );
 			queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < (LOCAL_OBSERVATION_DAYS+1)*24*60*60 );
+			console.log(`[LocalWeather] Loaded ${queue.length} persisted observations from ${observationsPath}`);
 		} catch ( err ) {
 			console.error( "Error reading historical observations from local storage.", err );
 			queue = [];
 		}
 	}
+	// Save observations every 30 minutes
 	setInterval( saveQueue, 1000 * 60 * 30 );
+	console.log(`[LocalWeather] Persistence enabled, saving to ${observationsPath} every 30 minutes`);
 }
 
 interface Observation {
 	timestamp: number;
-	temp: number;
-	humidity: number;
-	windSpeed: number;
-	solarRadiation: number;
-	precip: number;
+	temp: number | undefined;
+	humidity: number | undefined;
+	windSpeed: number | undefined;
+	solarRadiation: number | undefined;
+	precip: number | undefined;
 }
