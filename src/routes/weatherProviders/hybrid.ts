@@ -156,6 +156,15 @@ export default class HybridWeatherProvider extends WeatherProvider {
         try {
             const forecastResult = await forecastProvider.getWateringDataInternal(coordinates, pws);
 
+            // DEBUG: Schaue was OpenMeteo tatsächlich zurückgibt
+            console.log(`[HybridWeather DEBUG] OpenMeteo returned ${forecastResult.length} total entries`);
+            if (forecastResult.length > 0) {
+                console.log(`[HybridWeather DEBUG] First entry periodStartTime: ${forecastResult[0].periodStartTime} (${new Date(forecastResult[0].periodStartTime * 1000).toISOString()})`);
+                console.log(`[HybridWeather DEBUG] Last entry periodStartTime: ${forecastResult[forecastResult.length-1].periodStartTime} (${new Date(forecastResult[forecastResult.length-1].periodStartTime * 1000).toISOString()})`);
+            }
+            console.log(`[HybridWeather DEBUG] Current day epoch: ${currentDayEpoch} (${new Date(currentDayEpoch * 1000).toISOString()})`);
+            console.log(`[HybridWeather DEBUG] Tomorrow epoch: ${currentDayEpoch + (24*60*60)} (${new Date((currentDayEpoch + 24*60*60) * 1000).toISOString()})`);
+
             // Filter to only keep FUTURE forecast data (starting tomorrow)
             // We exclude today because we already have real measurements from local PWS
             // This ensures today's data is always actual conditions, not predictions
@@ -165,6 +174,7 @@ export default class HybridWeatherProvider extends WeatherProvider {
                 data.periodStartTime >= tomorrowEpoch
             );
 
+            console.log(`[HybridWeather DEBUG] After filtering (>= tomorrow): ${forecastData.length} entries`);
             console.log(`[HybridWeather] Retrieved ${forecastData.length} days of forecast data from ${forecastProviderName} (tomorrow onwards)`);
 
             // Additional check: ensure no overlap between historical and forecast
