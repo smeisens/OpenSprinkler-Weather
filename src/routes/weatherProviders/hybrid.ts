@@ -1,6 +1,6 @@
 import { GeoCoordinates, WeatherData, WateringData, PWS } from "../../types";
 import { WeatherProvider } from "./WeatherProvider";
-import { HybridOpenMeteoProvider } from "./hybrid";
+import { HybridOpenMeteoProvider } from "./hybrid-providers";
 import { CodedError, ErrorCode } from "../../errors";
 
 /**
