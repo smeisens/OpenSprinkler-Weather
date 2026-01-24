@@ -1,6 +1,6 @@
 import { GeoCoordinates, WeatherData, WateringData, PWS } from "../../types";
 import { WeatherProvider } from "./WeatherProvider";
-import { HybridOpenMeteoProvider } from "./hybrid-providers";
+import { HybridOpenMeteoProvider, HybridAppleProvider } from "./hybrid-providers";
 import { CodedError, ErrorCode } from "../../errors";
 
 /**
@@ -63,15 +63,17 @@ export default class HybridWeatherProvider extends WeatherProvider {
                 console.log(`[HybridFactory] Creating HybridOpenMeteoProvider`);
                 return new HybridOpenMeteoProvider(cloudProvider);
             
-            // Future implementations will be added here:
-            // case 'Apple':
-            //     return new HybridAppleProvider(cloudProvider);
+            case 'Apple':
+                console.log(`[HybridFactory] Creating HybridAppleProvider`);
+                return new HybridAppleProvider(cloudProvider);
+            
+            // Future implementations:
             // case 'OWM':
             //     return new HybridOWMProvider(cloudProvider);
             
             default:
                 console.error(`[HybridFactory] No hybrid implementation for provider: ${forecastProviderName}`);
-                console.error(`[HybridFactory] Currently supported: OpenMeteo`);
+                console.error(`[HybridFactory] Currently supported: OpenMeteo, Apple`);
                 console.error(`[HybridFactory] Please use one of the supported providers or implement Hybrid${forecastProviderName}Provider`);
                 throw new CodedError(ErrorCode.InsufficientWeatherData);
         }
