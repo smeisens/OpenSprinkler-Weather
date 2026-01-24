@@ -1,6 +1,6 @@
 import { GeoCoordinates, WeatherData, WateringData, PWS } from "../../types";
 import { WeatherProvider } from "./WeatherProvider";
-import { HybridOpenMeteoProvider, HybridAppleProvider } from "./hybrid-providers";
+import { HybridOpenMeteoProvider, HybridAppleProvider, HybridOWMProvider, HybridWUndergroundProvider } from "./hybrid-providers";
 import { CodedError, ErrorCode } from "../../errors";
 
 /**
@@ -20,7 +20,7 @@ import { CodedError, ErrorCode } from "../../errors";
  * 
  * Architecture:
  * - This is a factory/proxy class that creates the appropriate HybridXxxProvider
- * - Each cloud provider has its own hybrid implementation in the /hybrid folder
+ * - Each cloud provider has its own hybrid implementation in the /hybrid-providers folder
  * - All hybrid providers inherit from BaseHybridProvider for common logic
  * 
  * Why Hybrid?
@@ -67,13 +67,17 @@ export default class HybridWeatherProvider extends WeatherProvider {
                 console.log(`[HybridFactory] Creating HybridAppleProvider`);
                 return new HybridAppleProvider(cloudProvider);
             
-            // Future implementations:
-            // case 'OWM':
-            //     return new HybridOWMProvider(cloudProvider);
+            case 'OWM':
+                console.log(`[HybridFactory] Creating HybridOWMProvider`);
+                return new HybridOWMProvider(cloudProvider);
+            
+            case 'WU':
+                console.log(`[HybridFactory] Creating HybridWUndergroundProvider`);
+                return new HybridWUndergroundProvider(cloudProvider);
             
             default:
                 console.error(`[HybridFactory] No hybrid implementation for provider: ${forecastProviderName}`);
-                console.error(`[HybridFactory] Currently supported: OpenMeteo, Apple`);
+                console.error(`[HybridFactory] Currently supported: OpenMeteo, Apple, OWM, WU`);
                 console.error(`[HybridFactory] Please use one of the supported providers or implement Hybrid${forecastProviderName}Provider`);
                 throw new CodedError(ErrorCode.InsufficientWeatherData);
         }
