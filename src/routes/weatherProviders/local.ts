@@ -9,11 +9,27 @@ import { WeatherProvider } from "./WeatherProvider";
 import { CodedError, ErrorCode } from "../../errors";
 import { getParameter } from "../weather";
 
+// Interface MUSS vor der Verwendung definiert werden
+interface Observation {
+	timestamp: number;
+	temp: number | undefined;
+	humidity: number | undefined;
+	windSpeed: number | undefined;
+	solarRadiation: number | undefined;
+	precip: number | undefined;
+}
+
 var queue: Array<Observation> = [],
 	lastRainEpoch = 0,
 	lastRainCount = 0;  // Initialize to 0 instead of undefined
 
 const LOCAL_OBSERVATION_DAYS = 7;
+
+// Data Retention Strategy:
+// - In-memory queue: Keep up to 8 days (LOCAL_OBSERVATION_DAYS + 1)
+// - getWeatherDataInternal: Uses last 24 hours (for current weather display)
+// - getWateringDataInternal: Uses up to 7 complete days + today (for Zimmerman calculation)
+// - saveQueue: Trims to 8 days and persists every 30 minutes
 
 // Configure data directory from environment variable or use default
 // Using PERSISTENCE_LOCATION as per PR #144, but with path.join() for cross-platform compatibility (Copilot suggestion)
@@ -71,15 +87,17 @@ export const captureWUStream = async function( req: express.Request, res: expres
 export default class LocalWeatherProvider extends WeatherProvider {
 
 	protected async getWeatherDataInternal( coordinates: GeoCoordinates, pws: PWS | undefined ): Promise< WeatherData > {
-		queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < 24*60*60 );
+		// IMPORTANT: Filter locally, don't modify global queue!
+		// getWateringDataInternal needs up to 7 days of data
+		const recentQueue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < 24*60*60 );
 
-		if ( queue.length == 0 ) {
+		if ( recentQueue.length == 0 ) {
 			console.error( "There is insufficient data to support Weather response from local PWS." );
 			throw "There is insufficient data to support Weather response from local PWS.";
 		}
 
 		// Get most recent observation
-		const latest = queue[0];
+		const latest = recentQueue[0];
 
 		const weather: WeatherData = {
 			weatherProvider: "local",
@@ -89,7 +107,7 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			humidity: typeof latest.humidity === "number" ? Math.floor(latest.humidity) : undefined,
 			wind: typeof latest.windSpeed === "number" ? Math.floor(latest.windSpeed * 10) / 10 : undefined,
 			raining: false,
-			precip: Math.floor( queue.reduce( ( sum, obs ) => sum + ( typeof obs.precip === "number" ? obs.precip : 0 ), 0) * 100 ) / 100,
+			precip: Math.floor( recentQueue.reduce( ( sum, obs ) => sum + ( typeof obs.precip === "number" ? obs.precip : 0 ), 0) * 100 ) / 100,
 			description: "",
 			icon: "01d",
 			region: undefined,
@@ -146,7 +164,8 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			const avgSolar= dayObs.reduce((sum, obs) => typeof obs.solarRadiation === "number" && ++cSolar ? sum + obs.solarRadiation : sum, 0) / cSolar;
 			const avgWind = dayObs.reduce((sum, obs) => typeof obs.windSpeed === "number" && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind;
 			
-			if (cTemp && cHumidity && ![minTemp, minHum, -maxTemp, -maxHum].includes(Infinity) && cSolar && cWind) {
+			if (cTemp && cHumidity && ![minTemp, minHum, -maxTemp, -maxHum].includes(Infinity) && cWind) {
+				// Note: solarRadiation is optional - not all weather stations have solar sensors
 				data.push({
 					weatherProvider: "local",
 					periodStartTime: Math.floor(getUnixTime(dayStart)),
@@ -157,7 +176,7 @@ export default class LocalWeatherProvider extends WeatherProvider {
 					maxTemp: maxTemp,
 					minHumidity: minHum,
 					maxHumidity: maxHum,
-					solarRadiation: avgSolar,
+					solarRadiation: cSolar > 0 ? avgSolar : undefined,  // Optional - may be null
 					windSpeed: avgWind
 				});
 			}
@@ -191,10 +210,11 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			const avgWind = dayObs.reduce((sum, obs) => typeof obs.windSpeed === "number" && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind;
 			
 			// 5. Verify all required metrics are present
-			if (!(cTemp && cHumidity && cPrecip)
+			// Note: solarRadiation is optional - not all weather stations have solar sensors
+			if (!(cTemp && cHumidity)
 				|| [minTemp, minHum, -maxTemp, -maxHum].includes(Infinity)
-				|| !(cSolar && cWind && cPrecip)) {
-				// Missing data for older days - stop here
+				|| !cWind) {
+				// Missing required data for older days - stop here
 				break;
 			}
 			
@@ -209,7 +229,7 @@ export default class LocalWeatherProvider extends WeatherProvider {
 				maxTemp: maxTemp,
 				minHumidity: minHum,
 				maxHumidity: maxHum,
-				solarRadiation: avgSolar,
+				solarRadiation: cSolar > 0 ? avgSolar : undefined,  // Optional - may be null
 				windSpeed: avgWind
 			});
 			
@@ -222,13 +242,22 @@ export default class LocalWeatherProvider extends WeatherProvider {
 }
 
 function saveQueue() {
+	const beforeCount = queue.length;
+	// Keep observations up to 8 days old (7 days for watering + 1 day buffer)
 	queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < (LOCAL_OBSERVATION_DAYS+1)*24*60*60 );
+	const afterCount = queue.length;
+	const deletedCount = beforeCount - afterCount;
+	
 	try {
 		// Ensure data directory exists
 		if (!fs.existsSync(dataDir)) {
 			fs.mkdirSync(dataDir, { recursive: true });
 		}
 		fs.writeFileSync( observationsPath , JSON.stringify( queue ), "utf8" );
+		
+		if (deletedCount > 0) {
+			console.log(`[LocalWeather] Trimmed ${deletedCount} observations older than ${LOCAL_OBSERVATION_DAYS+1} days. Kept ${afterCount} observations.`);
+		}
 	} catch ( err ) {
 		console.error( "Error saving historical observations to local storage.", err );
 	}
@@ -249,13 +278,4 @@ if ( process.env.LOCAL_PERSISTENCE ) {
 	// Save observations every 30 minutes
 	setInterval( saveQueue, 1000 * 60 * 30 );
 	console.log(`[LocalWeather] Persistence enabled, saving to ${observationsPath} every 30 minutes`);
-}
-
-interface Observation {
-	timestamp: number;
-	temp: number | undefined;
-	humidity: number | undefined;
-	windSpeed: number | undefined;
-	solarRadiation: number | undefined;
-	precip: number | undefined;
 }
