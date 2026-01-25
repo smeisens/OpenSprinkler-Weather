@@ -90,5 +90,5 @@ export interface WateringData {
 	windSpeed: number;
 }
 
-export type WeatherProviderId = "OWM" | "PirateWeather" | "local" | "hybrid" | "mock" | "WUnderground" | "DWD" | "OpenMeteo" | "AccuWeather" | "Apple";
+export type WeatherProviderId = "OWM" | "PirateWeather" | "local" | "hybrid" | "mock" | "WUnderground" | "DWD" | "OpenMeteo" | "AccuWeather" | "Apple" | `local+${string}`;
 export type WeatherProviderShortId = "OWM" | "PW" | "local" | "hybrid" | "mock" | "WU" | "DWD" | "OpenMeteo" | "AW" | "Apple";

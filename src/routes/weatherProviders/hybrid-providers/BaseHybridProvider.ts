@@ -80,7 +80,7 @@ export abstract class BaseHybridProvider extends WeatherProvider {
 
         // Override weatherProvider to show hybrid mode in UI
         // Format: "local+OpenMeteo", "local+WU", etc.
-        weatherData.weatherProvider = `local+${this.cloudProviderName}` as any;
+        weatherData.weatherProvider = `local+${this.cloudProviderName}`;
 
         return weatherData;
     }

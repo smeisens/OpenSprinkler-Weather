@@ -184,21 +184,52 @@ function getTimeData(coordinates: GeoCoordinates): TimeData {
     };
 }
 
+
+/**
+ * Helper function to detect if wateringData contains future forecast data.
+ * This is used to determine if we're in Hybrid Mode with combined local+forecast data.
+ *
+ * @param wateringData Array of watering data to check
+ * @returns true if array contains data for future days (tomorrow onwards)
+ */
+function hasFutureDaysInWateringData(wateringData?: readonly WateringData[]): boolean {
+	if (!wateringData || wateringData.length === 0) {
+		return false;
+	}
+
+	// Calculate start of tomorrow (midnight UTC)
+	const nowUtc = new Date();
+	const tomorrowMidnightUtc = new Date(Date.UTC(
+		nowUtc.getUTCFullYear(),
+		nowUtc.getUTCMonth(),
+		nowUtc.getUTCDate() + 1,
+		0, 0, 0
+	));
+	const tomorrowEpoch = Math.floor(tomorrowMidnightUtc.getTime() / 1000);
+
+	// Check if array contains any future days
+	return wateringData.some(data => data.periodStartTime >= tomorrowEpoch);
+}
+
 /**
  * Checks if the weather data meets any of the restrictions set by OpenSprinkler. Restrictions prevent any watering
  * from occurring and are similar to 0% watering level. Known restrictions are:
  *
- * - California watering restriction prevents watering if precipitation over two days is greater than 0.1" over the past
- * 48 hours.
+ * - Rain amount restriction: Prevents watering if forecasted precipitation over N days exceeds threshold.
+ *   In Hybrid Mode, uses combined local+forecast data from wateringData array.
+ *   In Standard Mode, uses weather.forecast array.
+ * - California restriction: Prevents watering if precipitation over two days is greater than 0.1" over the past 48 hours.
+ * - Temperature restriction: Prevents watering if current temperature is below minimum threshold.
+ *
  * @param cali A boolean to enable the California restriction based on the old method.
  * @param wateringData Watering data to use to determine if any restrictions apply.
  * @param adjustmentOptions The adjustment options used, which gives restriction information.
- * @param weather Weather data to use to determine if any restrictions apply.
+ * @param weather Weather data to use to determine if any restrictions apply (used in Standard Mode).
  * @return A boolean indicating if the watering level should be set to 0% due to a restriction.
- */
  */
 function checkWeatherRestriction( cali: boolean, wateringData?: readonly WateringData[], adjustmentOptions?: AdjustmentOptions, weather?: WeatherData ): boolean {
 
+	// California restriction: Check past 48 hours
 	if ( ( cali || (adjustmentOptions && adjustmentOptions.cali ) ) && wateringData && wateringData.length ) {
 		// The most recent two days are at the beginning of the data array
 		const len = wateringData.length;
@@ -212,41 +243,69 @@ function checkWeatherRestriction( cali: boolean, wateringData?: readonly Waterin
 		}
 	}
 
-	// Rain amount restriction: Check if forecasted rain exceeds threshold
-	// IMPORTANT: In hybrid mode, wateringData contains both historical + forecast data
-	// The array is in reverse chronological order: [today, yesterday, ..., tomorrow, day_after, ...]
-	// We need to look at FUTURE days only (with periodStartTime >= tomorrow midnight UTC)
+	// Rain amount restriction: Check forecasted rain
+	// AUTO-DETECT MODE: Use wateringData if it contains future days (Hybrid Mode),
+	//                   otherwise use weather.forecast (Standard Mode)
 	if ( adjustmentOptions.rainAmt && adjustmentOptions.rainAmt > 0 && adjustmentOptions.rainDays ) {
-		if (!wateringData || wateringData.length === 0) {
-			console.warn('[Weather Restriction] No watering data available for rain amount check');
-			return false;
-		}
 
-		// Calculate start of tomorrow (midnight UTC)
-		const nowUtc = new Date();
-		const tomorrowMidnightUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate() + 1, 0, 0, 0));
-		const tomorrowEpoch = Math.floor(tomorrowMidnightUtc.getTime() / 1000);
+		// Check if we have future forecast data in wateringData (Hybrid Mode)
+		const isHybridMode = hasFutureDaysInWateringData(wateringData);
 
-		// Filter wateringData to only future days (tomorrow onwards)
-		const futureDays = wateringData.filter(data => data.periodStartTime >= tomorrowEpoch);
+		if (isHybridMode) {
+			// HYBRID MODE: Use wateringData which contains local historical + cloud forecast
+			console.log('[Weather Restriction] Hybrid Mode detected - using combined wateringData for forecast check');
 
-		// Take only the requested number of days
-		const daysToCheck = Math.min(futureDays.length, adjustmentOptions.rainDays);
+			// Calculate start of tomorrow (midnight UTC)
+			const nowUtc = new Date();
+			const tomorrowMidnightUtc = new Date(Date.UTC(
+				nowUtc.getUTCFullYear(),
+				nowUtc.getUTCMonth(),
+				nowUtc.getUTCDate() + 1,
+				0, 0, 0
+			));
+			const tomorrowEpoch = Math.floor(tomorrowMidnightUtc.getTime() / 1000);
 
-		console.log(`[Weather Restriction] Checking ${daysToCheck} future days for rain (threshold: ${adjustmentOptions.rainAmt}")`);
+			// Filter to only future days (tomorrow onwards)
+			const futureDays = wateringData.filter(data => data.periodStartTime >= tomorrowEpoch);
 
-		let precip = 0;
-		for ( let i = 0; i < daysToCheck; i++ ) {
-			precip += futureDays[i].precip;
-			console.log(`[Weather Restriction] Day ${i+1}: +${futureDays[i].precip}" (total: ${precip}")`);
-		}
+			// Take only the requested number of days
+			const daysToCheck = Math.min(futureDays.length, adjustmentOptions.rainDays);
 
-		if ( precip > adjustmentOptions.rainAmt ) {
-			console.log(`[Weather Restriction] TRIGGERED: ${precip}" > ${adjustmentOptions.rainAmt}"`);
-			return true;
+			console.log(`[Weather Restriction] Checking ${daysToCheck} future days for rain (threshold: ${adjustmentOptions.rainAmt}")`);
+
+			let precip = 0;
+			for ( let i = 0; i < daysToCheck; i++ ) {
+				precip += futureDays[i].precip;
+				console.log(`[Weather Restriction] Day ${i+1}: +${futureDays[i].precip}" (total: ${precip}")`);
+			}
+
+			if ( precip > adjustmentOptions.rainAmt ) {
+				console.log(`[Weather Restriction] TRIGGERED: ${precip}" > ${adjustmentOptions.rainAmt}"`);
+				return true;
+			}
+
+		} else {
+			// STANDARD MODE: Use weather.forecast (backwards-compatible behavior)
+			if (!weather || !weather.forecast || weather.forecast.length === 0) {
+				console.warn('[Weather Restriction] No forecast data available for rain amount check');
+				return false;
+			}
+
+			console.log('[Weather Restriction] Standard Mode - using weather.forecast');
+
+			const days = weather.forecast.length > adjustmentOptions.rainDays ? adjustmentOptions.rainDays : weather.forecast.length;
+			let precip = 0;
+			for ( let i = 0; i < days; i++ ) {
+				precip += weather.forecast[i].precip;
+			}
+
+			if ( precip > adjustmentOptions.rainAmt ){
+				return true;
+			}
 		}
 	}
 
+	// Temperature restriction: Check current temperature
 	if ( typeof adjustmentOptions.minTemp !== "undefined" && adjustmentOptions.minTemp != -40 ) {
 		if ( weather && weather.temp < adjustmentOptions.minTemp ) {
 			return true;
