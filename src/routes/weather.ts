@@ -267,10 +267,6 @@ function checkWeatherRestriction( cali: boolean, wateringData?: readonly Waterin
 
 			// Filter to only future days (tomorrow onwards)
 			const futureDays = wateringData.filter(data => data.periodStartTime >= tomorrowEpoch);
-			
-			// CRITICAL: wateringData is reverse chronological (newest first)
-			// We need to sort futureDays chronologically (oldest first) to check tomorrow first
-			futureDays.sort((a, b) => a.periodStartTime - b.periodStartTime);
 
 			// Take only the requested number of days
 			const daysToCheck = Math.min(futureDays.length, adjustmentOptions.rainDays);
@@ -279,9 +275,8 @@ function checkWeatherRestriction( cali: boolean, wateringData?: readonly Waterin
 
 			let precip = 0;
 			for ( let i = 0; i < daysToCheck; i++ ) {
-				const date = new Date(futureDays[i].periodStartTime * 1000).toISOString().split('T')[0];
 				precip += futureDays[i].precip;
-				console.log(`[Weather Restriction] Day ${i+1} (${date}): +${futureDays[i].precip}" (total: ${precip}")`);
+				console.log(`[Weather Restriction] Day ${i+1}: +${futureDays[i].precip}" (total: ${precip}")`);
 			}
 
 			if ( precip > adjustmentOptions.rainAmt ) {
