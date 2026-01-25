@@ -551,6 +551,15 @@ export const getWateringData = async function( req: express.Request, res: expres
 
 	if ( checkRestrictions ) {
 		let wateringData: readonly WateringData[] = adjustmentMethodResponse.wateringData;
+
+		// DEBUG: Log wateringData content
+		console.log(`[Debug] wateringData from adjustmentMethod: ${wateringData ? wateringData.length + ' entries' : 'undefined'}`);
+		if (wateringData && wateringData.length > 0) {
+			const sortedByTime = [...wateringData].sort((a, b) => a.periodStartTime - b.periodStartTime);
+			console.log(`[Debug] Oldest entry: epoch=${sortedByTime[0].periodStartTime}, precip=${sortedByTime[0].precip}`);
+			console.log(`[Debug] Newest entry: epoch=${sortedByTime[sortedByTime.length-1].periodStartTime}, precip=${sortedByTime[sortedByTime.length-1].precip}`);
+		}
+
 		let dataArr: CachedResult<readonly WateringData[]>;
 		// Fetch the watering data if the AdjustmentMethod didn't fetch it and the california restriction is being checked.
 		if ( ( ( ( wateringParam >> 7 ) & 1 ) > 0 || ( typeof adjustmentOptions.cali !== "undefined" && adjustmentOptions.cali ) ) && !adjustmentMethodResponse.wateringData ) {
