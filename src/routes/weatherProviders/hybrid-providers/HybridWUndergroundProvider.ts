@@ -7,10 +7,8 @@ import { BaseHybridProvider } from "./BaseHybridProvider";
  * 
  * Weather Underground-specific implementation notes:
  * - WU provides forecast data via getWeatherDataInternal() which includes a forecast array
- * - We convert the daily forecast data to WateringData format
- * - WU daily API provides: temperatureMin, temperatureMax, qpf (precip), qpfSnow
- * - Missing data (humidity, solar, wind) gets reasonable defaults or undefined
- * - NOTE: WU requires a PWS with apiKey for authentication
+ * - WU timestamps are at 6 AM UTC, not midnight like other providers
+ * - We need to compare DATES not exact timestamps
  */
 export default class HybridWUndergroundProvider extends BaseHybridProvider {
     
@@ -18,20 +16,6 @@ export default class HybridWUndergroundProvider extends BaseHybridProvider {
         super(cloudProvider, "WUnderground");
     }
 
-    /**
-     * Get forecast data from Weather Underground and convert to WateringData format.
-     * 
-     * WU returns forecast data through getWeatherDataInternal() in the forecast array.
-     * Each forecast day includes: date (validTimeUtc), temp_min, temp_max, precip (qpf + qpfSnow)
-     * 
-     * We filter to only include days AFTER today (tomorrow onwards) to avoid overlap
-     * with local historical data.
-     * 
-     * @param coordinates Geographic coordinates
-     * @param pws PWS information (REQUIRED by WU - must include id and apiKey)
-     * @param currentDayEpoch Unix timestamp for start of current day
-     * @returns Array of WateringData for future days
-     */
     protected async getForecastData(
         coordinates: GeoCoordinates,
         pws: PWS | undefined,
@@ -47,15 +31,15 @@ export default class HybridWUndergroundProvider extends BaseHybridProvider {
         const allForecastData: WateringData[] = weatherData.forecast.map(day => ({
             weatherProvider: "WUnderground",
             periodStartTime: day.date,
-            temp: (day.temp_min + day.temp_max) / 2,  // Average temperature
+            temp: (day.temp_min + day.temp_max) / 2,
             minTemp: day.temp_min,
             maxTemp: day.temp_max,
-            humidity: 50,  // Default - WU daily API doesn't provide hourly humidity averages
-            minHumidity: 40,  // Reasonable defaults
+            humidity: 50,
+            minHumidity: 40,
             maxHumidity: 60,
-            precip: day.precip,  // Already combined (qpf + qpfSnow) in WU provider
-            solarRadiation: undefined,  // Not available in daily API
-            windSpeed: undefined  // Not available in WU daily forecast API
+            precip: day.precip,
+            solarRadiation: undefined,
+            windSpeed: undefined
         }));
         
         console.log(`[Hybrid-WU DEBUG] Converted ${allForecastData.length} forecast days to WateringData`);
@@ -65,18 +49,38 @@ export default class HybridWUndergroundProvider extends BaseHybridProvider {
             console.log(`[Hybrid-WU DEBUG] Last entry periodStartTime: ${allForecastData[allForecastData.length-1].periodStartTime} (${new Date(allForecastData[allForecastData.length-1].periodStartTime * 1000).toISOString()})`);
         }
         
-        console.log(`[Hybrid-WU DEBUG] Current day epoch: ${currentDayEpoch} (${new Date(currentDayEpoch * 1000).toISOString()})`);
-        console.log(`[Hybrid-WU DEBUG] Tomorrow epoch: ${currentDayEpoch + (24*60*60)} (${new Date((currentDayEpoch + 24*60*60) * 1000).toISOString()})`);
+        // CRITICAL FIX: WU uses 6 AM UTC timestamps, not midnight
+        // We need to compare CALENDAR DAYS, not exact timestamps
         
-        // Filter to only keep FUTURE forecast data (starting tomorrow)
-        // We exclude today because we already have real measurements from local PWS
-        // This ensures today's data is always actual conditions, not predictions
-        const tomorrowEpoch = currentDayEpoch + (24 * 60 * 60);
-        const futureData = allForecastData.filter(data => 
-            data.periodStartTime >= tomorrowEpoch
-        );
+        // Get current day's date (UTC)
+        const currentDayDate = new Date(currentDayEpoch * 1000);
+        const currentYear = currentDayDate.getUTCFullYear();
+        const currentMonth = currentDayDate.getUTCMonth();
+        const currentDay = currentDayDate.getUTCDate();
         
-        console.log(`[Hybrid-WU DEBUG] After filtering (>= tomorrow): ${futureData.length} entries`);
+        console.log(`[Hybrid-WU DEBUG] Current day: ${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(currentDay).padStart(2,'0')}`);
+        
+        // Filter to keep tomorrow onwards (calendar days, not exact times)
+        const futureData = allForecastData.filter(data => {
+            const forecastDate = new Date(data.periodStartTime * 1000);
+            const forecastYear = forecastDate.getUTCFullYear();
+            const forecastMonth = forecastDate.getUTCMonth();
+            const forecastDay = forecastDate.getUTCDate();
+            
+            // Keep if forecast is AFTER current day (strictly greater)
+            if (forecastYear > currentYear) return true;
+            if (forecastYear === currentYear && forecastMonth > currentMonth) return true;
+            if (forecastYear === currentYear && forecastMonth === currentMonth && forecastDay > currentDay) return true;
+            
+            return false;
+        });
+        
+        console.log(`[Hybrid-WU DEBUG] After filtering (tomorrow onwards by calendar day): ${futureData.length} entries`);
+        
+        if (futureData.length > 0) {
+            const firstDate = new Date(futureData[0].periodStartTime * 1000);
+            console.log(`[Hybrid-WU DEBUG] First future day: ${firstDate.getUTCFullYear()}-${String(firstDate.getUTCMonth()+1).padStart(2,'0')}-${String(firstDate.getUTCDate()).padStart(2,'0')}, precip=${futureData[0].precip}"`);
+        }
         
         return futureData;
     }
