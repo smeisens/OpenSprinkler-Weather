@@ -196,6 +196,7 @@ function getTimeData(coordinates: GeoCoordinates): TimeData {
  * @param weather Weather data to use to determine if any restrictions apply.
  * @return A boolean indicating if the watering level should be set to 0% due to a restriction.
  */
+ */
 function checkWeatherRestriction( cali: boolean, wateringData?: readonly WateringData[], adjustmentOptions?: AdjustmentOptions, weather?: WeatherData ): boolean {
 
 	if ( ( cali || (adjustmentOptions && adjustmentOptions.cali ) ) && wateringData && wateringData.length ) {
@@ -211,26 +212,50 @@ function checkWeatherRestriction( cali: boolean, wateringData?: readonly Waterin
 		}
 	}
 
+	// Rain amount restriction: Check if forecasted rain exceeds threshold
+	// IMPORTANT: In hybrid mode, wateringData contains both historical + forecast data
+	// The array is in reverse chronological order: [today, yesterday, ..., tomorrow, day_after, ...]
+	// We need to look at FUTURE days only (with periodStartTime >= tomorrow midnight UTC)
 	if ( adjustmentOptions.rainAmt && adjustmentOptions.rainAmt > 0 && adjustmentOptions.rainDays ) {
-		const days = weather.forecast.length > adjustmentOptions.rainDays ? adjustmentOptions.rainDays : weather.forecast.length;
-		let precip = 0;
-		for ( let i = 0; i < days; i++ ) {
-			precip += weather.forecast[i].precip;
+		if (!wateringData || wateringData.length === 0) {
+			console.warn('[Weather Restriction] No watering data available for rain amount check');
+			return false;
 		}
 
-		if ( precip > adjustmentOptions.rainAmt ){
+		// Calculate start of tomorrow (midnight UTC)
+		const nowUtc = new Date();
+		const tomorrowMidnightUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate() + 1, 0, 0, 0));
+		const tomorrowEpoch = Math.floor(tomorrowMidnightUtc.getTime() / 1000);
+
+		// Filter wateringData to only future days (tomorrow onwards)
+		const futureDays = wateringData.filter(data => data.periodStartTime >= tomorrowEpoch);
+
+		// Take only the requested number of days
+		const daysToCheck = Math.min(futureDays.length, adjustmentOptions.rainDays);
+
+		console.log(`[Weather Restriction] Checking ${daysToCheck} future days for rain (threshold: ${adjustmentOptions.rainAmt}")`);
+
+		let precip = 0;
+		for ( let i = 0; i < daysToCheck; i++ ) {
+			precip += futureDays[i].precip;
+			console.log(`[Weather Restriction] Day ${i+1}: +${futureDays[i].precip}" (total: ${precip}")`);
+		}
+
+		if ( precip > adjustmentOptions.rainAmt ) {
+			console.log(`[Weather Restriction] TRIGGERED: ${precip}" > ${adjustmentOptions.rainAmt}"`);
 			return true;
 		}
 	}
 
 	if ( typeof adjustmentOptions.minTemp !== "undefined" && adjustmentOptions.minTemp != -40 ) {
-		if ( weather.temp < adjustmentOptions.minTemp ) {
+		if ( weather && weather.temp < adjustmentOptions.minTemp ) {
 			return true;
 		}
 	}
 
 	return false;
 }
+
 
 export const getWeatherData = async function( req: express.Request, res: express.Response ) {
 	const location: string = getParameter(req.query.loc);
@@ -438,9 +463,9 @@ export const getWateringData = async function( req: express.Request, res: expres
 			// HYBRID MODE: Get forecast provider from App UI selection
 			// Never use 'hybrid' as provider name - default to Apple
 			const forecastProvider = provider && provider !== 'hybrid' ? provider : 'Apple';
-			
+
 			console.log(`[Weather] Fetching hybrid data: local (historical) + ${forecastProvider} (forecast)`);
-			
+
 			// Fetch combined watering data before calling adjustment method
 			await weatherProvider.getWateringDataWithForecastProvider(
 				coordinates,
@@ -448,7 +473,7 @@ export const getWateringData = async function( req: express.Request, res: expres
 				forecastProvider
 			);
 		}
-		
+
 		// Call adjustment method (works for both hybrid and standard modes)
 		adjustmentMethodResponse = await adjustmentMethod.calculateWateringScale(
 			adjustmentOptions, coordinates, weatherProvider, pws
