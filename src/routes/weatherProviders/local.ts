@@ -12,11 +12,11 @@ import { getParameter } from "../weather";
 // Interface MUSS vor der Verwendung definiert werden
 interface Observation {
 	timestamp: number;
-	temp: number | undefined;
-	humidity: number | undefined;
-	windSpeed: number | undefined;
-	solarRadiation: number | undefined;
-	precip: number | undefined;
+	temp: number | null;
+	humidity: number | null;
+	windSpeed: number | null;
+	solarRadiation: number | null;  // Use null instead of undefined for JSON serialization
+	precip: number | null;
 }
 
 var queue: Array<Observation> = [],
@@ -41,10 +41,10 @@ const LOCAL_OBSERVATION_DAYS = 7;
 const dataDir = process.env.PERSISTENCE_LOCATION || path.join(__dirname, '..', '..', 'data');
 const observationsPath = path.join(dataDir, 'observations.json');
 
-function getMeasurement(req: express.Request, key: string): number | undefined {
+function getMeasurement(req: express.Request, key: string): number | null {
 	let value: number;
 
-	return ( key in req.query ) && !isNaN( value = parseFloat( getParameter(req.query[key]) ) ) && ( value !== -9999.0 ) ? value : undefined;
+	return ( key in req.query ) && !isNaN( value = parseFloat( getParameter(req.query[key]) ) ) && ( value !== -9999.0 ) ? value : null;
 }
 
 export const captureWUStream = async function( req: express.Request, res: express.Response ) {
@@ -56,7 +56,7 @@ export const captureWUStream = async function( req: express.Request, res: expres
 	const rainin = getMeasurement(req, "rainin");
 
 	// Calculate precipitation safely
-	let precip: number | undefined;
+	let precip: number | null = null;  // Default to null instead of undefined
 	if (typeof rainCount === "number" && typeof lastRainCount === "number") {
 		// Handle rain counter reset (when new value is less than previous)
 		precip = rainCount < lastRainCount ? rainCount : rainCount - lastRainCount;
@@ -70,7 +70,7 @@ export const captureWUStream = async function( req: express.Request, res: expres
 		temp: temp,
 		humidity: humidity,
 		windSpeed: windSpeed,
-		solarRadiation: typeof solarRadiation === "number" ? solarRadiation * 24 / 1000 : undefined,	// Convert to kWh/m^2 per day only if valid
+		solarRadiation: typeof solarRadiation === "number" ? solarRadiation * 24 / 1000 : null,	// Use null instead of undefined for JSON serialization
 		precip: precip,
 	};
 
