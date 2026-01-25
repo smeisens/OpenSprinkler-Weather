@@ -1,8 +1,8 @@
 import { GeoCoordinates, WeatherData, WateringData, PWS } from "../../types";
 import { WeatherProvider } from "./WeatherProvider";
-import {
-    HybridOpenMeteoProvider,
-    HybridAppleProvider,
+import { 
+    HybridOpenMeteoProvider, 
+    HybridAppleProvider, 
     HybridOWMProvider,
     HybridAccuWeatherProvider,
     HybridDWDProvider,
@@ -18,9 +18,9 @@ import { CachedResult } from "../../cache";
  * GOAL: Act EXACTLY like a standard provider (e.g. OpenMeteo), but with better data:
  * - Past + Current: Local weather station (actual measurements)
  * - Future: Cloud provider (professional forecasts)
- *
+ * 
  * For Zimmerman, Weather Restrictions, and UI, this is TRANSPARENT.
- *
+ * 
  * Supports all 7 providers:
  * - OpenMeteo (free, no API key)
  * - Apple
@@ -100,7 +100,7 @@ export default class HybridWeatherProvider extends WeatherProvider {
         pws: PWS | undefined,
         forecastProviderName: string
     ): Promise<readonly WateringData[]> {
-
+        
         // Create or reuse the hybrid provider
         if (this.activeProviderName !== forecastProviderName || !this.activeHybridProvider) {
             console.log(`[HybridFactory] Switching to forecast provider: ${forecastProviderName}`);
@@ -110,25 +110,25 @@ export default class HybridWeatherProvider extends WeatherProvider {
 
         // Get combined data and CACHE it
         const combinedData = await this.activeHybridProvider.getWateringDataInternal(coordinates, pws);
-
+        
         this.cachedCombinedData = combinedData;
         this.cacheCoordinates = coordinates;
         this.cacheTimestamp = Date.now();
-
+        
         console.log(`[HybridFactory] Cached ${combinedData.length} days of combined watering data`);
-
+        
         return combinedData;
     }
 
     /**
      * CRITICAL: Override getWeatherData() to return WeatherData with forecast[] array.
-     *
+     * 
      * This is what Weather Restrictions use to check future rain!
      * We must act EXACTLY like standard OpenMeteo/Apple providers.
      */
     async getWeatherData(coordinates: GeoCoordinates, pws?: PWS): Promise<CachedResult<WeatherData>> {
         console.log('[HybridFactory] getWeatherData() called (for Weather Restrictions)');
-
+        
         // Get current weather from local station
         let currentWeather: WeatherData;
         try {
@@ -141,13 +141,8 @@ export default class HybridWeatherProvider extends WeatherProvider {
         // Convert cached WateringData to forecast[] array
         if (this.cachedCombinedData && this.cachedCombinedData.length > 0) {
             console.log(`[HybridFactory] Converting ${this.cachedCombinedData.length} WateringData entries to forecast[] array`);
-
-            // CRITICAL: cachedCombinedData is reverse chronological (newest first)
-            // But forecast[] needs to be chronological (oldest first) for restrictions
-            // So we reverse it before mapping
-            const chronologicalData = [...this.cachedCombinedData].reverse();
-
-            currentWeather.forecast = chronologicalData.map(wd => ({
+            
+            currentWeather.forecast = this.cachedCombinedData.map(wd => ({
                 temp_min: wd.minTemp,
                 temp_max: wd.maxTemp,
                 precip: wd.precip,
@@ -155,7 +150,7 @@ export default class HybridWeatherProvider extends WeatherProvider {
                 icon: "01d",  // Default icon
                 description: ""  // Not critical for restrictions
             }));
-
+            
             console.log(`[HybridFactory] Created forecast[] with ${currentWeather.forecast.length} days`);
             console.log(`[HybridFactory] First forecast: ${new Date(currentWeather.forecast[0].date * 1000).toISOString().split('T')[0]}, precip=${currentWeather.forecast[0].precip}"`);
             if (currentWeather.forecast.length > 1) {
@@ -176,7 +171,7 @@ export default class HybridWeatherProvider extends WeatherProvider {
      * Get current weather from local station.
      */
     protected async getWeatherDataInternal(
-        coordinates: GeoCoordinates,
+        coordinates: GeoCoordinates, 
         pws: PWS | undefined
     ): Promise<WeatherData> {
         if (!this.activeHybridProvider) {
@@ -191,12 +186,12 @@ export default class HybridWeatherProvider extends WeatherProvider {
 
     /**
      * CRITICAL: Override getWateringData() to return combined data to Zimmerman.
-     *
+     * 
      * This bypasses the base class cache and returns our cached combined data.
      */
     getWateringData(coordinates: GeoCoordinates, pws?: PWS): Promise<CachedResult<readonly WateringData[]>> {
         console.log('[HybridFactory] getWateringData() called (for Zimmerman)');
-
+        
         const now = Date.now();
         const cacheValid = this.cachedCombinedData &&
                           this.cacheCoordinates &&
