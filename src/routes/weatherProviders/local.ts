@@ -23,6 +23,11 @@ var queue: Array<Observation> = [],
 	lastRainEpoch = 0,
 	lastRainCount = 0;  // Initialize to 0 instead of undefined
 
+// Export queue for debugging purposes
+export function getQueue(): Array<Observation> {
+	return queue;
+}
+
 const LOCAL_OBSERVATION_DAYS = 7;
 
 // Data Retention Strategy:
@@ -73,7 +78,7 @@ export const captureWUStream = async function( req: express.Request, res: expres
 	if (typeof rainin === "number" && rainin > 0) {
 		lastRainEpoch = obs.timestamp;
 	}
-	
+
 	// Update lastRainCount only if rainCount is a valid number
 	if (typeof rainCount === "number") {
 		lastRainCount = rainCount;
@@ -125,7 +130,7 @@ export default class LocalWeatherProvider extends WeatherProvider {
 	protected async getWateringDataInternal( coordinates: GeoCoordinates, pws: PWS | undefined ): Promise< WateringData[] > {
 		// Note: Queue trimming is handled by saveQueue() which runs every 30 minutes
 		// DO NOT trim the global queue here as it causes data loss!
-		
+
 		if ( queue.length == 0 || queue[0].timestamp - queue[queue.length-1].timestamp < 23*60*60) {
 			console.error( "There is insufficient data to support watering calculation from local PWS." );
 			throw new CodedError( ErrorCode.InsufficientWeatherData );
@@ -135,7 +140,7 @@ export default class LocalWeatherProvider extends WeatherProvider {
 		const currentDay = startOfDay(localTime(coordinates));  // today 00:00 local
 		const now = Math.floor(Date.now() / 1000);  // current time in epoch
 		const startTime = getUnixTime(subDays(currentDay, 7));  // 7 days ago at midnight
-		
+
 		// Filter to include data from 7 days ago up to NOW (including today's partial data)
 		// This gives hybrid mode the most accurate recent data from the local station
 		const filteredData = queue.filter(obs => obs.timestamp >= startTime && obs.timestamp <= now);
@@ -145,12 +150,12 @@ export default class LocalWeatherProvider extends WeatherProvider {
 		// Start with today (partial day with data up to now)
 		let dayEnd = new Date(now * 1000);  // Current time
 		let dayStart = currentDay;  // Today at midnight
-		
+
 		// First iteration: Today (partial day)
-		let dayObs = filteredData.filter(obs => 
+		let dayObs = filteredData.filter(obs =>
 			obs.timestamp >= getUnixTime(dayStart) && obs.timestamp <= now
 		);
-		
+
 		if (dayObs.length > 0) {
 			// Process today's partial data
 			let cTemp=0, cHumidity=0, cPrecip=0, cSolar=0, cWind=0;
@@ -163,7 +168,7 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			const maxHum  = dayObs.reduce((max, obs) => (typeof obs.humidity === "number" && max < obs.humidity ? obs.humidity : max), -Infinity);
 			const avgSolar= dayObs.reduce((sum, obs) => typeof obs.solarRadiation === "number" && ++cSolar ? sum + obs.solarRadiation : sum, 0) / cSolar;
 			const avgWind = dayObs.reduce((sum, obs) => typeof obs.windSpeed === "number" && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind;
-			
+
 			if (cTemp && cHumidity && ![minTemp, minHum, -maxTemp, -maxHum].includes(Infinity) && cWind) {
 				// Note: solarRadiation is optional - not all weather stations have solar sensors
 				data.push({
@@ -181,22 +186,22 @@ export default class LocalWeatherProvider extends WeatherProvider {
 				});
 			}
 		}
-		
+
 		// Continue with previous complete days (yesterday through 7 days ago)
 		dayEnd = currentDay;
 		for (let i = 0; i < 7; i++) {
 			let dayStart = subDays(dayEnd, 1);
-			
+
 			// Collect observations for this day [dayStart, dayEnd)
-			const dayObs = filteredData.filter(obs => 
+			const dayObs = filteredData.filter(obs =>
 				obs.timestamp >= getUnixTime(dayStart) && obs.timestamp < getUnixTime(dayEnd)
 			);
-			
+
 			if (dayObs.length === 0) {
 				// No data for older days - stop here, return what we have
 				break;
 			}
-			
+
 			// 4. Calculate daily averages/totals
 			let cTemp=0, cHumidity=0, cPrecip=0, cSolar=0, cWind=0;
 			const avgTemp = dayObs.reduce((sum, obs) => typeof obs.temp === "number" && ++cTemp ? sum + obs.temp : sum, 0) / cTemp;
@@ -208,7 +213,7 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			const maxHum  = dayObs.reduce((max, obs) => (typeof obs.humidity === "number" && max < obs.humidity ? obs.humidity : max), -Infinity);
 			const avgSolar= dayObs.reduce((sum, obs) => typeof obs.solarRadiation === "number" && ++cSolar ? sum + obs.solarRadiation : sum, 0) / cSolar;
 			const avgWind = dayObs.reduce((sum, obs) => typeof obs.windSpeed === "number" && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind;
-			
+
 			// 5. Verify all required metrics are present
 			// Note: solarRadiation is optional - not all weather stations have solar sensors
 			if (!(cTemp && cHumidity)
@@ -217,7 +222,7 @@ export default class LocalWeatherProvider extends WeatherProvider {
 				// Missing required data for older days - stop here
 				break;
 			}
-			
+
 			// 6. Create WateringData for this day
 			data.push({
 				weatherProvider: "local",
@@ -232,10 +237,10 @@ export default class LocalWeatherProvider extends WeatherProvider {
 				solarRadiation: cSolar > 0 ? avgSolar : undefined,  // Optional - may be null
 				windSpeed: avgWind
 			});
-			
+
 			dayEnd = dayStart;  // move to previous day
 		}
-		
+
 		console.log(`[LocalWeather] Returning ${data.length} days of historical data`);
 		return data;
 	}
@@ -247,14 +252,14 @@ function saveQueue() {
 	queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < (LOCAL_OBSERVATION_DAYS+1)*24*60*60 );
 	const afterCount = queue.length;
 	const deletedCount = beforeCount - afterCount;
-	
+
 	try {
 		// Ensure data directory exists
 		if (!fs.existsSync(dataDir)) {
 			fs.mkdirSync(dataDir, { recursive: true });
 		}
 		fs.writeFileSync( observationsPath , JSON.stringify( queue ), "utf8" );
-		
+
 		if (deletedCount > 0) {
 			console.log(`[LocalWeather] Trimmed ${deletedCount} observations older than ${LOCAL_OBSERVATION_DAYS+1} days. Kept ${afterCount} observations.`);
 		}
