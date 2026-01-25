@@ -1,33 +1,34 @@
 import { GeoCoordinates, WeatherData, WateringData, PWS } from "../../types";
 import { WeatherProvider } from "./WeatherProvider";
-import { HybridOpenMeteoProvider, HybridAppleProvider, HybridOWMProvider } from "./hybrid-providers";
+import {
+    HybridOpenMeteoProvider,
+    HybridAppleProvider,
+    HybridOWMProvider,
+    HybridAccuWeatherProvider,
+    HybridDWDProvider,
+    HybridPirateWeatherProvider,
+    HybridWUndergroundProvider
+} from "./hybrid-providers";
 import { CodedError, ErrorCode } from "../../errors";
 import { CachedResult } from "../../cache";
 
 /**
  * HybridWeatherProvider - Factory class that delegates to cloud-specific implementations.
  *
- * Design Philosophy:
- * - CURRENT WEATHER (now): Uses local weather station for real-time conditions
- *   → Used for rain delay decisions and current weather display in app
- * - HISTORICAL DATA (past 7 days): Uses local weather station for accurate measurements
- *   → Provides actual temperature, humidity, rainfall, solar, wind from your station
- * - FORECAST DATA (next 7 days): Uses external provider (Apple, OpenMeteo, etc.) for predictions
- *   → Professional forecasts for future watering calculations
+ * GOAL: Act EXACTLY like a standard provider (e.g. OpenMeteo), but with better data:
+ * - Past + Current: Local weather station (actual measurements)
+ * - Future: Cloud provider (professional forecasts)
  *
- * Configuration:
- * - Current & Historical source: Always "local" PWS (requires LOCAL_PERSISTENCE=true in .env)
- * - Forecast source: Selected via 'Weather Provider' in OpenSprinkler App UI
+ * For Zimmerman, Weather Restrictions, and UI, this is TRANSPARENT.
  *
- * Architecture:
- * - This is a factory/proxy class that creates the appropriate HybridXxxProvider
- * - Each cloud provider has its own hybrid implementation in the /hybrid folder
- * - All hybrid providers inherit from BaseHybridProvider for common logic
- *
- * Why Hybrid?
- * - Local PWS gives you EXACT past conditions (better than any forecast)
- * - Professional forecasts give you reliable FUTURE predictions (better than extrapolation)
- * - Zimmerman algorithm gets best of both worlds for optimal watering decisions
+ * Supports all 7 providers:
+ * - OpenMeteo (free, no API key)
+ * - Apple
+ * - OWM (OpenWeatherMap)
+ * - AccuWeather
+ * - DWD/Bright Sky (Germany)
+ * - PirateWeather
+ * - Weather Underground
  */
 export default class HybridWeatherProvider extends WeatherProvider {
     private forecastProviders: Map<string, WeatherProvider>;
@@ -46,25 +47,15 @@ export default class HybridWeatherProvider extends WeatherProvider {
     }
 
     /**
-     * Factory method: Creates the appropriate Hybrid provider based on cloud provider selection.
-     *
-     * This method is called once per request with the user's selected forecast provider.
-     * It instantiates the correct HybridXxxProvider that knows how to handle that specific
-     * cloud provider's data format.
-     *
-     * @param forecastProviderName Name of the cloud provider (from App UI)
-     * @returns The appropriate HybridXxxProvider instance
+     * Factory method: Creates the appropriate Hybrid provider for ANY cloud provider.
      */
     private createHybridProvider(forecastProviderName: string): WeatherProvider {
         const cloudProvider = this.forecastProviders.get(forecastProviderName);
 
         if (!cloudProvider) {
-            console.error(`[HybridFactory] Cloud provider '${forecastProviderName}' not found, available:`,
-                         Array.from(this.forecastProviders.keys()));
-            throw new CodedError(ErrorCode.InsufficientWeatherData);
+            throw new CodedError(ErrorCode.InvalidProvider);
         }
 
-        // Create the appropriate hybrid provider based on cloud provider type
         switch (forecastProviderName) {
             case 'OpenMeteo':
                 console.log(`[HybridFactory] Creating HybridOpenMeteoProvider`);
@@ -78,24 +69,31 @@ export default class HybridWeatherProvider extends WeatherProvider {
                 console.log(`[HybridFactory] Creating HybridOWMProvider`);
                 return new HybridOWMProvider(cloudProvider);
 
+            case 'AccuWeather':
+                console.log(`[HybridFactory] Creating HybridAccuWeatherProvider`);
+                return new HybridAccuWeatherProvider(cloudProvider);
+
+            case 'DWD':
+                console.log(`[HybridFactory] Creating HybridDWDProvider`);
+                return new HybridDWDProvider(cloudProvider);
+
+            case 'PirateWeather':
+                console.log(`[HybridFactory] Creating HybridPirateWeatherProvider`);
+                return new HybridPirateWeatherProvider(cloudProvider);
+
+            case 'WU':
+                console.log(`[HybridFactory] Creating HybridWUndergroundProvider`);
+                return new HybridWUndergroundProvider(cloudProvider);
+
             default:
-                console.error(`[HybridFactory] No hybrid implementation for provider: ${forecastProviderName}`);
-                console.error(`[HybridFactory] Currently supported: OpenMeteo, Apple, OWM`);
-                console.error(`[HybridFactory] Please use one of the supported providers or implement Hybrid${forecastProviderName}Provider`);
-                throw new CodedError(ErrorCode.InsufficientWeatherData);
+                console.error(`[HybridFactory] Unknown provider: ${forecastProviderName}`);
+                throw new CodedError(ErrorCode.InvalidProvider);
         }
     }
 
     /**
      * Get watering data using the appropriate hybrid provider.
-     *
-     * This is called from weather.ts with the user's selected forecast provider name.
-     * We create (or reuse) the appropriate HybridXxxProvider and delegate to it.
-     *
-     * @param coordinates Geographic coordinates
-     * @param pws PWS information
-     * @param forecastProviderName Name of the forecast provider (from App UI selection)
-     * @returns Array of WateringData in reverse chronological order (newest first)
+     * Called from weather.ts BEFORE Zimmerman runs.
      */
     public async getWateringDataWithForecastProvider(
         coordinates: GeoCoordinates,
@@ -103,17 +101,16 @@ export default class HybridWeatherProvider extends WeatherProvider {
         forecastProviderName: string
     ): Promise<readonly WateringData[]> {
 
-        // Create or reuse the hybrid provider for this forecast provider
+        // Create or reuse the hybrid provider
         if (this.activeProviderName !== forecastProviderName || !this.activeHybridProvider) {
             console.log(`[HybridFactory] Switching to forecast provider: ${forecastProviderName}`);
             this.activeHybridProvider = this.createHybridProvider(forecastProviderName);
             this.activeProviderName = forecastProviderName;
         }
 
-        // Delegate to the concrete hybrid provider and CACHE the result
+        // Get combined data and CACHE it
         const combinedData = await this.activeHybridProvider.getWateringDataInternal(coordinates, pws);
 
-        // Store in cache for later getWateringDataInternal() calls (from Zimmerman)
         this.cachedCombinedData = combinedData;
         this.cacheCoordinates = coordinates;
         this.cacheTimestamp = Date.now();
@@ -124,23 +121,62 @@ export default class HybridWeatherProvider extends WeatherProvider {
     }
 
     /**
-     * Get current weather data for display in the mobile app and rain delay decisions.
+     * CRITICAL: Override getWeatherData() to return WeatherData with forecast[] array.
      *
-     * Delegates to the active hybrid provider (or creates a default one if none exists).
-     * Falls back to Apple if no provider is active yet.
-     *
-     * @param coordinates Geographic coordinates
-     * @param pws PWS information
-     * @returns Current weather conditions
+     * This is what Weather Restrictions use to check future rain!
+     * We must act EXACTLY like standard OpenMeteo/Apple providers.
+     */
+    async getWeatherData(coordinates: GeoCoordinates, pws?: PWS): Promise<CachedResult<WeatherData>> {
+        console.log('[HybridFactory] getWeatherData() called (for Weather Restrictions)');
+
+        // Get current weather from local station
+        let currentWeather: WeatherData;
+        try {
+            currentWeather = await this.getWeatherDataInternal(coordinates, pws);
+        } catch (err) {
+            console.error('[HybridFactory] Failed to get current weather:', err);
+            throw err;
+        }
+
+        // Convert cached WateringData to forecast[] array
+        if (this.cachedCombinedData && this.cachedCombinedData.length > 0) {
+            console.log(`[HybridFactory] Converting ${this.cachedCombinedData.length} WateringData entries to forecast[] array`);
+
+            currentWeather.forecast = this.cachedCombinedData.map(wd => ({
+                temp_min: wd.minTemp,
+                temp_max: wd.maxTemp,
+                precip: wd.precip,
+                date: wd.periodStartTime,
+                icon: "01d",  // Default icon
+                description: ""  // Not critical for restrictions
+            }));
+
+            console.log(`[HybridFactory] Created forecast[] with ${currentWeather.forecast.length} days`);
+            console.log(`[HybridFactory] First forecast: ${new Date(currentWeather.forecast[0].date * 1000).toISOString().split('T')[0]}, precip=${currentWeather.forecast[0].precip}"`);
+            if (currentWeather.forecast.length > 1) {
+                console.log(`[HybridFactory] Second forecast: ${new Date(currentWeather.forecast[1].date * 1000).toISOString().split('T')[0]}, precip=${currentWeather.forecast[1].precip}"`);
+            }
+        } else {
+            console.warn('[HybridFactory] No cached data available for forecast[] array');
+            currentWeather.forecast = [];
+        }
+
+        return {
+            value: currentWeather,
+            ttl: Date.now() + this.CACHE_TTL
+        };
+    }
+
+    /**
+     * Get current weather from local station.
      */
     protected async getWeatherDataInternal(
         coordinates: GeoCoordinates,
         pws: PWS | undefined
     ): Promise<WeatherData> {
-        // If we don't have an active provider yet, create one with a sensible default
         if (!this.activeHybridProvider) {
             const defaultProvider = 'Apple';
-            console.log(`[HybridFactory] No active provider, defaulting to ${defaultProvider} for weather data`);
+            console.log(`[HybridFactory] No active provider, defaulting to ${defaultProvider}`);
             this.activeHybridProvider = this.createHybridProvider(defaultProvider);
             this.activeProviderName = defaultProvider;
         }
@@ -149,43 +185,13 @@ export default class HybridWeatherProvider extends WeatherProvider {
     }
 
     /**
-     * Override getWateringData to use our custom cache for combined data.
+     * CRITICAL: Override getWateringData() to return combined data to Zimmerman.
      *
-     * The base class implementation has its own cache, but we need to bypass it
-     * because we're caching the COMBINED (historical + forecast) data.
-     *
-     * This is called by Zimmerman AdjustmentMethod.
+     * This bypasses the base class cache and returns our cached combined data.
      */
-    async getWateringData(
-        coordinates: GeoCoordinates,
-        pws?: PWS
-    ): Promise<CachedResult<readonly WateringData[]>> {
-        console.log('[HybridFactory] getWateringData() override called!');
+    getWateringData(coordinates: GeoCoordinates, pws?: PWS): Promise<CachedResult<readonly WateringData[]>> {
+        console.log('[HybridFactory] getWateringData() called (for Zimmerman)');
 
-        const data = await this.getWateringDataInternal(coordinates, pws);
-
-        console.log(`[HybridFactory] Returning ${data.length} days from getWateringData()`);
-
-        return {
-            value: data,
-            ttl: Date.now() + this.CACHE_TTL
-        };
-    }
-
-    /**
-     * Standard getWateringDataInternal implementation.
-     *
-     * IMPORTANT: This is called by Zimmerman AdjustmentMethod via getWateringData()!
-     * We return the cached combined data (historical + forecast) that was prepared
-     * by getWateringDataWithForecastProvider().
-     *
-     * If no cached data exists (shouldn't happen in hybrid mode), fallback to local-only data.
-     */
-    protected async getWateringDataInternal(
-        coordinates: GeoCoordinates,
-        pws: PWS | undefined
-    ): Promise<readonly WateringData[]> {
-        // Check if we have valid cached combined data
         const now = Date.now();
         const cacheValid = this.cachedCombinedData &&
                           this.cacheCoordinates &&
@@ -194,27 +200,17 @@ export default class HybridWeatherProvider extends WeatherProvider {
                           (now - this.cacheTimestamp) < this.CACHE_TTL;
 
         if (cacheValid && this.cachedCombinedData) {
-            console.log(`[HybridFactory] Using cached combined watering data (${this.cachedCombinedData.length} days)`);
-            return this.cachedCombinedData;
+            console.log(`[HybridFactory] Returning cached ${this.cachedCombinedData.length} days to Zimmerman`);
+            return Promise.resolve({
+                value: this.cachedCombinedData,
+                ttl: this.cacheTimestamp + this.CACHE_TTL
+            });
         }
 
-        // No cache available - this shouldn't happen in hybrid mode but handle it gracefully
-        console.warn("[HybridFactory] getWateringDataInternal called without cached data - falling back to local-only");
-
-        // Create a default provider if needed
-        if (!this.activeHybridProvider) {
-            const defaultProvider = 'Apple';
-            console.log(`[HybridFactory] Creating default provider: ${defaultProvider}`);
-            this.activeHybridProvider = this.createHybridProvider(defaultProvider);
-            this.activeProviderName = defaultProvider;
-        }
-
-        return await this.activeHybridProvider.getWateringDataInternal(coordinates, pws);
+        console.warn('[HybridFactory] No cached data, falling back to base class');
+        return super.getWateringData(coordinates, pws);
     }
 
-    /**
-     * Cache settings for hybrid provider.
-     */
     public shouldCacheWateringScale(): boolean {
         return true;
     }
