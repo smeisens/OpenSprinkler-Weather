@@ -2,6 +2,7 @@ import { GeoCoordinates, WeatherData, WateringData, PWS } from "../../types";
 import { WeatherProvider } from "./WeatherProvider";
 import { HybridOpenMeteoProvider, HybridAppleProvider, HybridOWMProvider } from "./hybrid-providers";
 import { CodedError, ErrorCode } from "../../errors";
+import { CachedResult } from "../../cache";
 
 /**
  * HybridWeatherProvider - Factory class that delegates to cloud-specific implementations.
@@ -148,9 +149,33 @@ export default class HybridWeatherProvider extends WeatherProvider {
     }
 
     /**
+     * Override getWateringData to use our custom cache for combined data.
+     *
+     * The base class implementation has its own cache, but we need to bypass it
+     * because we're caching the COMBINED (historical + forecast) data.
+     *
+     * This is called by Zimmerman AdjustmentMethod.
+     */
+    async getWateringData(
+        coordinates: GeoCoordinates,
+        pws?: PWS
+    ): Promise<CachedResult<readonly WateringData[]>> {
+        console.log('[HybridFactory] getWateringData() override called!');
+
+        const data = await this.getWateringDataInternal(coordinates, pws);
+
+        console.log(`[HybridFactory] Returning ${data.length} days from getWateringData()`);
+
+        return {
+            value: data,
+            ttl: Date.now() + this.CACHE_TTL
+        };
+    }
+
+    /**
      * Standard getWateringDataInternal implementation.
      *
-     * IMPORTANT: This is called by Zimmerman AdjustmentMethod!
+     * IMPORTANT: This is called by Zimmerman AdjustmentMethod via getWateringData()!
      * We return the cached combined data (historical + forecast) that was prepared
      * by getWateringDataWithForecastProvider().
      *
