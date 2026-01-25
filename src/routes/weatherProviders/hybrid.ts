@@ -142,7 +142,12 @@ export default class HybridWeatherProvider extends WeatherProvider {
         if (this.cachedCombinedData && this.cachedCombinedData.length > 0) {
             console.log(`[HybridFactory] Converting ${this.cachedCombinedData.length} WateringData entries to forecast[] array`);
 
-            currentWeather.forecast = this.cachedCombinedData.map(wd => ({
+            // CRITICAL: cachedCombinedData is reverse chronological (newest first)
+            // But forecast[] needs to be chronological (oldest first) for restrictions
+            // So we reverse it before mapping
+            const chronologicalData = [...this.cachedCombinedData].reverse();
+
+            currentWeather.forecast = chronologicalData.map(wd => ({
                 temp_min: wd.minTemp,
                 temp_max: wd.maxTemp,
                 precip: wd.precip,
