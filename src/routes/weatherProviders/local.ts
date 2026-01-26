@@ -43,22 +43,23 @@ export const captureWUStream = async function( req: express.Request, res: expres
 export default class LocalWeatherProvider extends WeatherProvider {
 
 	protected async getWeatherDataInternal( coordinates: GeoCoordinates, pws: PWS | undefined ): Promise< WeatherData > {
-		queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < 24*60*60 );
+		// Use local copy to avoid modifying global queue
+		const recentQueue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < 24*60*60 );
 
-		if ( queue.length == 0 ) {
+		if ( recentQueue.length == 0 ) {
 			console.error( "There is insufficient data to support Weather response from local PWS." );
 			throw "There is insufficient data to support Weather response from local PWS.";
 		}
 
 		const weather: WeatherData = {
 			weatherProvider: "local",
-			temp: Math.floor( queue[ 0 ].temp ) || undefined,
+			temp: Math.floor( recentQueue[ 0 ].temp ) || undefined,
 			minTemp: undefined,
 			maxTemp: undefined,
-			humidity: Math.floor( queue[ 0 ].humidity ) || undefined ,
-			wind: Math.floor( queue[ 0 ].windSpeed * 10 ) / 10 || undefined,
+			humidity: Math.floor( recentQueue[ 0 ].humidity ) || undefined ,
+			wind: Math.floor( recentQueue[ 0 ].windSpeed * 10 ) / 10 || undefined,
 			raining: false,
-			precip: Math.floor( queue.reduce( ( sum, obs ) => sum + ( obs.precip || 0 ), 0) * 100 ) / 100,
+			precip: Math.floor( recentQueue.reduce( ( sum, obs ) => sum + ( obs.precip || 0 ), 0) * 100 ) / 100,
 			description: "",
 			icon: "01d",
 			region: undefined,
@@ -139,39 +140,7 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			dayEnd = dayStart;  // move to previous day
 		}
 		return data;
-
-
-		queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < 24*60*60 );
-
-		if ( queue.length == 0 || queue[ 0 ].timestamp - queue[ queue.length - 1 ].timestamp < 23*60*60 ) {
-			console.error( "There is insufficient data to support watering calculation from local PWS." );
-			throw new CodedError( ErrorCode.InsufficientWeatherData );
-		}
-
-		let cTemp = 0, cHumidity = 0, cPrecip = 0, cSolar = 0, cWind = 0;
-		const result: WateringData = {
-			weatherProvider: "local",
-			temp: queue.reduce( ( sum, obs ) => !isNaN( obs.temp ) && ++cTemp ? sum + obs.temp : sum, 0) / cTemp,
-			humidity: queue.reduce( ( sum, obs ) => !isNaN( obs.humidity ) && ++cHumidity ? sum + obs.humidity : sum, 0) / cHumidity,
-			precip: queue.reduce( ( sum, obs ) => !isNaN( obs.precip ) && ++cPrecip ? sum + obs.precip : sum, 0),
-			periodStartTime: Math.floor( queue[ queue.length - 1 ].timestamp ),
-			minTemp: queue.reduce( (min, obs) => ( min > obs.temp ) ? obs.temp : min, Infinity ),
-			maxTemp: queue.reduce( (max, obs) => ( max < obs.temp ) ? obs.temp : max, -Infinity ),
-			minHumidity: queue.reduce( (min, obs) => ( min > obs.humidity ) ? obs.humidity : min, Infinity ),
-			maxHumidity: queue.reduce( (max, obs) => ( max < obs.humidity ) ? obs.humidity : max, -Infinity ),
-			solarRadiation: queue.reduce( (sum, obs) => !isNaN( obs.solarRadiation ) && ++cSolar ? sum + obs.solarRadiation : sum, 0) / cSolar,
-			windSpeed: queue.reduce( (sum, obs) => !isNaN( obs.windSpeed ) && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind
-		};
-
-		if ( !( cTemp && cHumidity && cPrecip ) ||
-			[ result.minTemp, result.minHumidity, -result.maxTemp, -result.maxHumidity ].includes( Infinity ) ||
-			!( cSolar && cWind && cPrecip )) {
-			console.error( "There is insufficient data to support watering calculation from local PWS." );
-			throw new CodedError( ErrorCode.InsufficientWeatherData );
-		}
-
-		return [result];
-	};
+	}
 
 }
 
