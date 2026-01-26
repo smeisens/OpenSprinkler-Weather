@@ -32,7 +32,14 @@ EXPOSE 8080
 WORKDIR /weather
 COPY /package.json ./
 RUN mkdir baselineEToData
+
+RUN mkdir -p /data
+
 COPY --from=build_eto /eto/Baseline_ETo_Data.bin ./baselineEToData
 COPY --from=build_node /weather/dist ./dist
+
+ENV PERSISTENCE_LOCATION=/data
+
+VOLUME /data
 
 CMD ["npm", "run", "start"]
