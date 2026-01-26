@@ -90,5 +90,145 @@ export interface WateringData {
 	windSpeed: number;
 }
 
-export type WeatherProviderId = "OWM" | "PirateWeather" | "local" | "mock" | "WUnderground" | "DWD" | "OpenMeteo" | "AccuWeather" | "Apple";
-export type WeatherProviderShortId = "OWM" | "PW" | "local" | "mock" | "WU" | "DWD" | "OpenMeteo" | "AW" | "Apple";
+
+/**
+ * NORM-konforme Bewässerungsdaten mit standardisierten Einheiten und
+ * zeitzonen-bewussten Timestamps.
+ *
+ * Alle Timestamps sind Unix epoch Sekunden und auf lokale Mitternacht (00:00)
+ * normalisiert, basierend auf den Koordinaten.
+ */
+export interface NormalizedWateringData {
+	/** Unix epoch Sekunden, normalisiert auf lokale Mitternacht (00:00) */
+	timestamp: number;
+
+	/** Name des Wetterdienstes, aus dem dieser Datensatz stammt */
+	weatherProvider: string;
+
+	// =========================
+	// Pflicht für ALLE Methoden
+	// =========================
+
+	/** Temperatur in Fahrenheit (Tagesdurchschnitt) */
+	temp_f: number;
+
+	/** Relative Luftfeuchtigkeit in Prozent (Tagesdurchschnitt) */
+	humidity_pct: number;
+
+	/** Niederschlag in Inches (Tagessumme) */
+	precip_in: number;
+
+	// =========================
+	// Optional – nur für ETo
+	// =========================
+
+	/** Minimale Temperatur in Fahrenheit (täglich) */
+	min_temp_f?: number;
+
+	/** Maximale Temperatur in Fahrenheit (täglich) */
+	max_temp_f?: number;
+
+	/** Minimale relative Luftfeuchtigkeit in Prozent (täglich) */
+	min_humidity_pct?: number;
+
+	/** Maximale relative Luftfeuchtigkeit in Prozent (täglich) */
+	max_humidity_pct?: number;
+
+	/** Windgeschwindigkeit in mph (Tagesdurchschnitt, 2 m Höhe) */
+	wind_mph?: number;
+
+	/** Solarstrahlung in kWh/m²/Tag */
+	solar_radiation_kwh?: number;
+}
+
+/**
+ * Komplettes normalisiertes Datenset mit historischen, aktuellen
+ * und Forecast-Daten.
+ */
+export interface NormalizedDataSet {
+	/**
+	 * Historische Daten in umgekehrter Chronologie
+	 * [0 = heute, 1 = gestern, 2 = vorgestern, …]
+	 */
+	historical: readonly NormalizedWateringData[];
+
+	/**
+	 * Forecast-Daten in chronologischer Reihenfolge
+	 * [0 = heute, 1 = morgen, 2 = übermorgen, …]
+	 */
+	forecast: readonly NormalizedWateringData[];
+
+	/**
+	 * Aktuelle Wetterdaten (nicht aggregiert),
+	 * primär für Rain Delay / Regen-Erkennung.
+	 */
+	current?: {
+		/** Unix epoch Sekunden (aktueller Zeitpunkt) */
+		timestamp: number;
+
+		/** Temperatur in Fahrenheit */
+		temp_f: number;
+
+		/** Relative Luftfeuchtigkeit in Prozent */
+		humidity_pct: number;
+
+		/** Aktiver Niederschlag ja/nein */
+		raining: boolean;
+	};
+
+	/** Metadaten zum normalisierten Datenset */
+	metadata: NormalizationMetadata;
+}
+
+/**
+ * Metadaten zur Nachvollziehbarkeit der Normalisierung.
+ */
+export interface NormalizationMetadata {
+	/** Primärer Provider-Name (z. B. “OpenMeteo”, “Local”, “Hybrid”) */
+	provider: string;
+
+	/** Art der Datenquelle */
+	dataSource: ‘local’ | ‘cloud’ | ‘hybrid’;
+
+	/** IANA Zeitzone (z. B. “Europe/Berlin”) */
+	timezone: string;
+
+	/** Geographische Koordinaten */
+	coordinates: GeoCoordinates;
+
+	/** Höhe über NN in Metern */
+	elevation: number;
+
+	/** Anzahl historischer Tage */
+	historicalDays: number;
+
+	/** Anzahl Forecast-Tage */
+	forecastDays: number;
+
+	/** Ältester enthaltener Tag */
+	oldestDate: Date;
+
+	/** Neuester enthaltener Tag */
+	newestDate: Date;
+
+	/** Marker: Datensatz ist vollständig normalisiert */
+	normalized: true;
+}
+
+/**
+ * Ergebnis einer NORM-Validierung.
+ */
+export interface ValidationResult {
+	/** Ob die Validierung erfolgreich war */
+	valid: boolean;
+
+	/** Fehler (blockierend, Methode darf nicht ausgeführt werden) */
+	errors: string[];
+
+	/** Warnungen (nicht blockierend) */
+	warnings: string[];
+}
+
+
+export type WeatherProviderId = "OWM" | "PirateWeather" | "local" | "hybrid" | "mock" | "WUnderground" | "DWD" | "OpenMeteo" | "AccuWeather" | "Apple";
+export type WeatherProviderShortId = "OWM" | "PW" | "local" | "hybrid" | "mock" | "WU" | "DWD" | "OpenMeteo" | "AW" | "Apple";
