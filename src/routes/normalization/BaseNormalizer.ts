@@ -1,37 +1,37 @@
-import { GeoCoordinates, WateringData, NormalizedWateringData, ValidationResult } from ‘…/…/types’;
-import { getTZ } from ‘…/weather’;
-import { TZDate } from ‘@date-fns/tz’;
-import { startOfDay, getUnixTime } from ‘date-fns’;
+import { GeoCoordinates, WateringData, NormalizedWateringData, ValidationResult } from '../../types';
+import { getTZ } from '../weather';
+import { TZDate } from '@date-fns/tz';
+import { startOfDay, getUnixTime } from 'date-fns';
 
 /**
- * Abstrakte Basis-Klasse für Wetterdaten-Normalisierer.
- * Jeder Provider implementiert einen konkreten Normalizer der diese Klasse erweitert.
- */
+ * Abstrakte Basis-Klasse für Wetterdaten-Normalisierer.
+ * Jeder Provider implementiert einen konkreten Normalizer der diese Klasse erweitert.
+ */
 export abstract class BaseNormalizer {
     /**
-     * Provider Name (z.B. “OpenMeteo”, “WUnderground”, “Local”)
-     */
+     * Provider Name (z.B. "OpenMeteo", "WUnderground", "Local")
+     */
     abstract readonly providerName: string;
 
     /**
-     * Normalisiere rohe WateringData zu NORM-konformem Format.
-     *
-     * @param rawData - Rohdaten vom Provider
-     * @param coordinates - Standort-Koordinaten für Zeitzone-Berechnung
-     * @returns Normalisiertes Daten-Array
-     */
+     * Normalisiere rohe WateringData zu NORM-konformem Format.
+     *
+     * @param rawData - Rohdaten vom Provider
+     * @param coordinates - Standort-Koordinaten für Zeitzone-Berechnung
+     * @returns Normalisiertes Daten-Array
+     */
     abstract normalizeWateringData(
         rawData: readonly WateringData[],
         coordinates: GeoCoordinates
     ): NormalizedWateringData[];
 
     /**
-     * Normalisiere einen einzelnen Timestamp auf lokale Mitternacht.
-     *
-     * @param timestamp - Unix epoch Sekunden (beliebige Tageszeit)
-     * @param coordinates - Standort-Koordinaten
-     * @returns Unix epoch Sekunden der lokalen Mitternacht
-     */
+     * Normalisiere einen einzelnen Timestamp auf lokale Mitternacht.
+     *
+     * @param timestamp - Unix epoch Sekunden (beliebige Tageszeit)
+     * @param coordinates - Standort-Koordinaten
+     * @returns Unix epoch Sekunden der lokalen Mitternacht
+     */
     protected normalizeTimestamp(
         timestamp: number,
         coordinates: GeoCoordinates
@@ -51,26 +51,26 @@ export abstract class BaseNormalizer {
     }
 
     /**
-     * Sortiere Daten in umgekehrter Chronologie (neueste zuerst).
-     */
+     * Sortiere Daten in umgekehrter Chronologie (neueste zuerst).
+     */
     protected sortReverseChronological(
         data: NormalizedWateringData[]
     ): NormalizedWateringData[] {
-        return […data].sort((a, b) => b.timestamp - a.timestamp);
+        return [...data].sort((a, b) => b.timestamp - a.timestamp);
     }
 
     /**
-     * Sortiere Daten chronologisch (älteste zuerst).
-     */
+     * Sortiere Daten chronologisch (älteste zuerst).
+     */
     protected sortChronological(
         data: NormalizedWateringData[]
     ): NormalizedWateringData[] {
-        return […data].sort((a, b) => a.timestamp - b.timestamp);
+        return [...data].sort((a, b) => a.timestamp - b.timestamp);
     }
 
     /**
-     * Entferne doppelte Timestamps.
-     */
+     * Entferne doppelte Timestamps.
+     */
     protected removeDuplicates(
         data: NormalizedWateringData[]
     ): NormalizedWateringData[] {
@@ -80,7 +80,7 @@ export abstract class BaseNormalizer {
                 console.warn(
                     `[${this.providerName}] Doppelter Timestamp: ${new Date(item.timestamp * 1000)}`
                 );
-            return false;
+                return false;
             }
             seen.add(item.timestamp);
             return true;
@@ -88,15 +88,15 @@ export abstract class BaseNormalizer {
     }
 
     /**
-     * Logge Normalisierungs-Info.
-     */
+     * Logge Normalisierungs-Info.
+     */
     protected log(message: string): void {
         console.log(`[${this.providerName} Normalizer] ${message}`);
     }
 
     /**
-     * Logge Warnung.
-     */
+     * Logge Warnung.
+     */
     protected warn(message: string): void {
         console.warn(`[${this.providerName} Normalizer] ${message}`);
     }

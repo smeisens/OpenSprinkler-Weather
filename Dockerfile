@@ -18,7 +18,7 @@ WORKDIR /weather
 
 COPY /tsconfig.json ./
 COPY /package.json ./
-RUN npm install --include=dev
+RUN npm install
 COPY /build.mjs ./
 
 COPY /src ./src

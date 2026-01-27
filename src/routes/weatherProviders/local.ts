@@ -8,16 +8,26 @@ import { WeatherProvider } from "./WeatherProvider";
 import { CodedError, ErrorCode } from "../../errors";
 import { getParameter } from "../weather";
 
-var queue: Array<Observation> = [],
-	lastRainEpoch = 0,
-	lastRainCount: number;
+// ============================================================================
+// FIXED: Verwende let statt var, initialisiere lastRainCount mit 0
+// ============================================================================
+let queue: Array<Observation> = [];
+let lastRainEpoch = 0;
+let lastRainCount = 0;  // FIXED: War undefined, jetzt 0
 
 const LOCAL_OBSERVATION_DAYS = 7;
 
-function getMeasurement(req: express.Request, key: string): number {
-	let value: number;
+// ============================================================================
+// FIXED: Rückgabetyp number | undefined (vorher nur number)
+// FIXED: Lesbarere Implementierung
+// ============================================================================
+function getMeasurement(req: express.Request, key: string): number | undefined {
+	if (!(key in req.query)) return undefined;
 
-	return ( key in req.query ) && !isNaN( value = parseFloat( getParameter(req.query[key]) ) ) && ( value !== -9999.0 ) ? value : undefined;
+	const value = parseFloat(getParameter(req.query[key]));
+	if (isNaN(value) || value === -9999.0) return undefined;
+
+	return value;
 }
 
 export const captureWUStream = async function( req: express.Request, res: express.Response ) {
@@ -75,9 +85,14 @@ export default class LocalWeatherProvider extends WeatherProvider {
 	}
 
 	protected async getWateringDataInternal( coordinates: GeoCoordinates, pws: PWS | undefined ): Promise< WateringData[] > {
-		// 1. Trim queue to 7 days (if not already trimmed)
-		queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < LOCAL_OBSERVATION_DAYS*24*60*60);
-		if ( queue.length == 0 || queue[0].timestamp - queue[queue.length-1].timestamp < 23*60*60) {
+		// ============================================================================
+		// FIXED: Erstelle lokale Kopie statt globale queue zu überschreiben!
+		// VORHER: queue = queue.filter(...);
+		// NACHHER: const trimmedQueue = queue.filter(...);
+		// ============================================================================
+		const trimmedQueue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < LOCAL_OBSERVATION_DAYS*24*60*60);
+
+		if ( trimmedQueue.length == 0 || trimmedQueue[0].timestamp - trimmedQueue[trimmedQueue.length-1].timestamp < 23*60*60) {
 			console.error( "There is insufficient data to support watering calculation from local PWS." );
 			throw new CodedError( ErrorCode.InsufficientWeatherData );
 		}
@@ -86,7 +101,11 @@ export default class LocalWeatherProvider extends WeatherProvider {
 		const currentDay = startOfDay(localTime(coordinates));  // today 00:00 local
 		const endTime = getUnixTime(currentDay);
 		const startTime = getUnixTime(subDays(currentDay, 7));
-		const filteredData = queue.filter(obs => obs.timestamp >= startTime && obs.timestamp < endTime);
+
+		// ============================================================================
+		// FIXED: Verwende trimmedQueue statt globale queue
+		// ============================================================================
+		const filteredData = trimmedQueue.filter(obs => obs.timestamp >= startTime && obs.timestamp < endTime);
 		const data: WateringData[] = [];
 
 		// 3. Loop over each day from yesterday back to 7 days ago

@@ -1,3 +1,8 @@
+import {
+    NormalizedDataSet,
+    ValidationResult
+} from '../../types';
+
 function log(message: string) {
     console.log(`[NormalizedDataValidator] ${message}`);
 }
@@ -6,14 +11,8 @@ function warn(message: string) {
     console.warn(`[NormalizedDataValidator] ${message}`);
 }
 
-
-import {
-    NormalizedDataSet,
-    ValidationResult
-} from '../../types';
-
 export interface ValidationOptions {
-    method: 'zimmerman' | 'eto';
+    method: string;
     requireForecast?: boolean;
     minHistoricalDays?: number;
 }
@@ -57,11 +56,11 @@ export function validateNormalizedData(
     }
 
     // 2️⃣ Methoden-spezifisch
-    if (options.method === 'zimmerman') {
+    if (options.method?.toLowerCase() === 'zimmerman') {
         validateZimmerman(data, warnings, options);
     }
 
-    if (options.method === 'eto') {
+    if (options.method?.toLowerCase() === 'eto') {
         validateEto(data, warnings);
     }
 
