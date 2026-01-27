@@ -70,6 +70,52 @@ const filters = {
     timezone: /^()()()()()()([+-])(\d{2})(\d{2})/,
 };
 
+
+import { LocalNormalizer } from './normalization/normalizers/LocalNormalizer';
+import { OpenMeteoNormalizer } from './normalization/normalizers/OpenMeteoNormalizer';
+import { validateNormalizedData } from './normalization/NormalizedDataValidator';
+
+// ---- TEMP TEST HOOK ---------------------------------
+
+if (process.env.NORM_TEST === 'true') {
+    let normalizer;
+
+    if (weatherProvider === 'local') {
+        normalizer = new LocalNormalizer();
+    } else if (weatherProvider === 'openmeteo') {
+        normalizer = new OpenMeteoNormalizer();
+    }
+
+    if (normalizer) {
+        const normalized = normalizer.normalizeWateringData(
+            wateringData,
+            coordinates
+        );
+
+        validateNormalizedData(
+            {
+                historical: normalized,
+                forecast: [],
+                metadata: {
+                    provider: weatherProvider,
+                    dataSource: 'local',
+                    timezone: 'auto',
+                    coordinates,
+                    elevation,
+                    historicalDays: normalized.length,
+                    forecastDays: 0,
+                    oldestDate: new Date(),
+                    newestDate: new Date(),
+                    normalized: true
+                }
+            },
+            { method: adjustmentMethod }
+        );
+    }
+}
+// ------------------------------------------------------
+
+
 /** AdjustmentMethods mapped to their numeric IDs. */
 const ADJUSTMENT_METHOD: { [key: number]: AdjustmentMethod } = {
     0: ManualAdjustmentMethod,
