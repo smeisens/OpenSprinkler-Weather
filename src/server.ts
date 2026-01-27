@@ -4,7 +4,7 @@ import './bootstrap';
 import express from "express";
 import cors from "cors";
 
-import { getWateringData, getWeatherData, testNormalization } from "./routes/weather";
+import { getWateringData, getWeatherData, testNormalization } from "./routes/weather";  // ← GEÄNDERT
 import { captureWUStream } from "./routes/weatherProviders/local";
 import { getBaselineETo } from "./routes/baselineETo";
 import {default as packageJson} from "../package.json";
@@ -12,24 +12,24 @@ import { pinoHttp } from "pino-http";
 import { pino, LevelWithSilent } from "pino";
 
 function getLogLevel(): LevelWithSilent {
-switch (process.env.LOG_LEVEL) {
-	case "trace":
-		return "trace";
-	case "debug":
-		return "debug";
-	case "info":
-		return "info";
-	case "warn":
-		return "warn";
-	case "error":
-		return "error";
-	case "fatal":
-		return "fatal";
-	case "silent":
-		return "silent";
-	default:
-		return "info";
-}
+	switch (process.env.LOG_LEVEL) {
+		case "trace":
+			return "trace";
+		case "debug":
+			return "debug";
+		case "info":
+			return "info";
+		case "warn":
+			return "warn";
+		case "error":
+			return "error";
+		case "fatal":
+			return "fatal";
+		case "silent":
+			return "silent";
+		default:
+			return "info";
+	}
 }
 
 const logger = pino({ level: getLogLevel() });
@@ -66,6 +66,14 @@ app.get( "/", function( req, res ) {
 app.options( /baselineETo/, cors() );
 app.get( /baselineETo/, cors(), getBaselineETo );
 
+// ============================================================================
+// NEU: Test route for normalization (only if NORM_TEST=true)
+// ============================================================================
+if (process.env.NORM_TEST === 'true') {
+	app.get("/test-normalization", testNormalization);
+	console.log("Test route /test-normalization enabled");
+}
+
 // Handle 404 error
 app.use( function( req, res ) {
 	res.status( 404 );
@@ -80,9 +88,3 @@ app.listen( port, host, function() {
 		console.log( "%s now listening for local weather stream", packageJson.description );
 	}
 } );
-
-// Test route for normalization (only if NORM_TEST=true)
-if (process.env.NORM_TEST === 'true') {
-    app.get("/test-normalization", testNormalization);
-    console.log("Test route /test-normalization enabled");
-}

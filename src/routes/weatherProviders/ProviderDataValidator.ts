@@ -146,3 +146,5 @@ export function validateEToData(data: readonly NormalizedWateringData[]): Valida
 
     return result;
 }
+
+console.log(`[ProviderDataValidator] Provider data valid`);
