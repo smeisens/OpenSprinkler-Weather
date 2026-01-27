@@ -1,7 +1,7 @@
 import {
     NormalizedDataSet,
     ValidationResult
-} from '../../types';
+} from '../../../types';
 
 function log(message: string) {
     console.log(`[NormalizedDataValidator] ${message}`);

@@ -1,6 +1,6 @@
 import { GeoCoordinates, WateringData, NormalizedWateringData, ValidationResult } from '../../types';
-import { geoTZ } from 'geo-tz';
-import { TZDate } from '@date-fns/tz';
+import geoTZ from "geo-tz";
+import TZDate from '@date-fns/tz';
 import { startOfDay, getUnixTime } from 'date-fns';
 
 /**
@@ -37,7 +37,7 @@ export abstract class BaseNormalizer {
         coordinates: GeoCoordinates
     ): number {
         // 1. Hole Zeitzone aus Koordinaten
-        const timezone = getTZ(coordinates);
+        const timezone = geoTZ.find(coordinates[0], coordinates[1])[0];
 
         // 2. Erstelle TZDate im lokalen Kontext
         const date = new Date(timestamp * 1000);
