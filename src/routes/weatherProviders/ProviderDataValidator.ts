@@ -1,3 +1,5 @@
+console.log(`[ProviderDataValidator] Provider data valid`);
+
 import { NormalizedWateringData, ValidationResult, GeoCoordinates } from '../../types';
 import { getTZ } from '../weather';
 import { TZDate } from '@date-fns/tz';

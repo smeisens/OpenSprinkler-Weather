@@ -1,3 +1,5 @@
+this.log(`Normalisiere ${rawData.length} Tage`);
+
 import { BaseNormalizer } from '../BaseNormalizer';
 import { GeoCoordinates, WateringData, NormalizedWateringData } from '../../../types';
 

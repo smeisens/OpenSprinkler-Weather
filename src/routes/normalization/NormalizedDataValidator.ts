@@ -1,3 +1,12 @@
+function log(message: string) {
+    console.log(`[NormalizedDataValidator] ${message}`);
+}
+
+function warn(message: string) {
+    console.warn(`[NormalizedDataValidator] ${message}`);
+}
+
+
 import {
     NormalizedDataSet,
     ValidationResult
@@ -13,6 +22,12 @@ export function validateNormalizedData(
     data: NormalizedDataSet,
     options: ValidationOptions
 ): ValidationResult {
+
+    log(`Start validation`);
+    log(`Method: ${options.method}`);
+    log(`Historical days: ${data.historical?.length ?? 0}`);
+    log(`Forecast days: ${data.forecast?.length ?? 0}`);
+
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -54,6 +69,14 @@ export function validateNormalizedData(
     if (options.requireForecast && (!data.forecast || data.forecast.length === 0)) {
         warnings.push('Keine Forecast-Daten für Weather Restrictions verfügbar');
     }
+
+    if (errors.length > 0) {
+        log(`Validation FAILED with ${errors.length} error(s)`);
+    } else {
+        log(`Validation OK`);
+    }
+
+    warnings.forEach(w => warn(w));
 
     return {
         valid: errors.length === 0,
