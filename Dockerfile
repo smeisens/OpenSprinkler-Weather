@@ -22,6 +22,7 @@ RUN npm install --include=dev
 COPY /build.mjs ./
 
 COPY /src ./src
+ENV ESBUILD_LOG_LEVEL=debug
 RUN npm run build
 
 FROM node:20-alpine
