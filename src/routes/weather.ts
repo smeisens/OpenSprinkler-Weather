@@ -30,7 +30,7 @@ import { TZDate } from "@date-fns/tz";
 // ============================================================================
 import { LocalNormalizer } from './normalization/normalizers/LocalNormalizer';
 import { OpenMeteoNormalizer } from './normalization/normalizers/OpenMeteoNormalizer';
-import { validateNormalizedData } from './normalization/normalizers/NormalizedDataValidator';
+import { validateNormalizedData } from './normalization/NormalizedDataValidator';
 // ============================================================================
 
 const WEATHER_PROVIDERS: { [K in Exclude<WeatherProviderShortId, "mock">]: WeatherProvider } = {
