@@ -32,18 +32,22 @@ function getMeasurement(req: express.Request, key: string): number | undefined {
 
 export const captureWUStream = async function( req: express.Request, res: express.Response ) {
 	let rainCount = getMeasurement(req, "dailyrainin");
+	const solarRaw = getMeasurement(req, "solarradiation");
 
 	const obs: Observation = {
 		timestamp: req.query.dateutc === "now" ? Math.floor(Date.now()/1000) : Math.floor(new Date(String(req.query.dateutc) + "Z").getTime()/1000),
 		temp: getMeasurement(req, "tempf"),
 		humidity: getMeasurement(req, "humidity"),
 		windSpeed: getMeasurement(req, "windspeedmph"),
-		solarRadiation: getMeasurement(req, "solarradiation") * 24 / 1000,	// Convert to kWh/m^2 per day
-		precip: rainCount < lastRainCount ? rainCount : rainCount - lastRainCount,
+		solarRadiation: solarRaw !== undefined ? solarRaw * 24 / 1000 : undefined,	// Convert to kWh/m^2 per day
+		precip: rainCount !== undefined
+			? (rainCount < lastRainCount ? rainCount : rainCount - lastRainCount)
+			: undefined,
 	};
 
-	lastRainEpoch = getMeasurement(req, "rainin") > 0 ? obs.timestamp : lastRainEpoch;
-	lastRainCount = isNaN(rainCount) ? lastRainCount : rainCount;
+	const rainin = getMeasurement(req, "rainin");
+	lastRainEpoch = rainin !== undefined && rainin > 0 ? obs.timestamp : lastRainEpoch;
+	lastRainCount = rainCount !== undefined ? rainCount : lastRainCount;
 
 	queue.unshift(obs);
 
@@ -61,15 +65,16 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			throw "There is insufficient data to support Weather response from local PWS.";
 		}
 
+		const latestObs = recentQueue[0];
 		const weather: WeatherData = {
 			weatherProvider: "local",
-			temp: Math.floor( recentQueue[ 0 ].temp ) || undefined,
+			temp: latestObs.temp !== undefined ? Math.floor(latestObs.temp) : undefined,
 			minTemp: undefined,
 			maxTemp: undefined,
-			humidity: Math.floor( recentQueue[ 0 ].humidity ) || undefined ,
-			wind: Math.floor( recentQueue[ 0 ].windSpeed * 10 ) / 10 || undefined,
+			humidity: latestObs.humidity !== undefined ? Math.floor(latestObs.humidity) : undefined,
+			wind: latestObs.windSpeed !== undefined ? Math.floor(latestObs.windSpeed * 10) / 10 : undefined,
 			raining: false,
-			precip: Math.floor( recentQueue.reduce( ( sum, obs ) => sum + ( obs.precip || 0 ), 0) * 100 ) / 100,
+			precip: Math.floor( recentQueue.reduce( ( sum, obs ) => sum + ( obs.precip ?? 0 ), 0) * 100 ) / 100,
 			description: "",
 			icon: "01d",
 			region: undefined,
@@ -123,19 +128,22 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			}
 			// 4. Calculate daily averages/totals
 			let cTemp=0, cHumidity=0, cPrecip=0, cSolar=0, cWind=0;
-			const avgTemp = dayObs.reduce((sum, obs) => !isNaN(obs.temp) && ++cTemp ? sum + obs.temp : sum, 0) / cTemp;
-			const avgHum  = dayObs.reduce((sum, obs) => !isNaN(obs.humidity) && ++cHumidity ? sum + obs.humidity : sum, 0) / cHumidity;
-			const totalPrecip = dayObs.reduce((sum, obs) => !isNaN(obs.precip) && ++cPrecip ? sum + obs.precip : sum, 0);
-			const minTemp = dayObs.reduce((min, obs) => (min > obs.temp ? obs.temp : min), Infinity);
-			const maxTemp = dayObs.reduce((max, obs) => (max < obs.temp ? obs.temp : max), -Infinity);
-			const minHum  = dayObs.reduce((min, obs) => (min > obs.humidity ? obs.humidity : min), Infinity);
-			const maxHum  = dayObs.reduce((max, obs) => (max < obs.humidity ? obs.humidity : max), -Infinity);
-			const avgSolar= dayObs.reduce((sum, obs) => !isNaN(obs.solarRadiation) && ++cSolar ? sum + obs.solarRadiation : sum, 0) / cSolar;
-			const avgWind = dayObs.reduce((sum, obs) => !isNaN(obs.windSpeed) && ++cWind ? sum + obs.windSpeed : sum, 0) / cWind;
-			// 5. Verify all metrics present
+			const avgTemp = dayObs.reduce((sum, obs) => obs.temp !== undefined && !isNaN(obs.temp) && ++cTemp ? sum + obs.temp : sum, 0) / cTemp;
+			const avgHum  = dayObs.reduce((sum, obs) => obs.humidity !== undefined && !isNaN(obs.humidity) && ++cHumidity ? sum + obs.humidity : sum, 0) / cHumidity;
+			const totalPrecip = dayObs.reduce((sum, obs) => obs.precip !== undefined && !isNaN(obs.precip) && ++cPrecip ? sum + obs.precip : sum, 0);
+			const minTemp = dayObs.reduce((min, obs) => obs.temp !== undefined && min > obs.temp ? obs.temp : min, Infinity);
+			const maxTemp = dayObs.reduce((max, obs) => obs.temp !== undefined && max < obs.temp ? obs.temp : max, -Infinity);
+			const minHum  = dayObs.reduce((min, obs) => obs.humidity !== undefined && min > obs.humidity ? obs.humidity : min, Infinity);
+			const maxHum  = dayObs.reduce((max, obs) => obs.humidity !== undefined && max < obs.humidity ? obs.humidity : max, -Infinity);
+			// Solar and Wind are OPTIONAL - many PWS don't have these sensors
+			const solarSum = dayObs.reduce((sum, obs) => obs.solarRadiation !== undefined && !isNaN(obs.solarRadiation) && ++cSolar ? sum + obs.solarRadiation : sum, 0);
+			const windSum  = dayObs.reduce((sum, obs) => obs.windSpeed !== undefined && !isNaN(obs.windSpeed) && ++cWind ? sum + obs.windSpeed : sum, 0);
+			const avgSolar = cSolar > 0 ? solarSum / cSolar : undefined;
+			const avgWind  = cWind > 0 ? windSum / cWind : undefined;
+			// 5. Verify REQUIRED metrics present (temp, humidity, precip)
+			// Solar and Wind are optional - many PWS don't have these sensors
 			if (!(cTemp && cHumidity && cPrecip)
-				|| [minTemp, minHum, -maxTemp, -maxHum].includes(Infinity)
-				|| !(cSolar && cWind && cPrecip)) {
+				|| [minTemp, minHum, -maxTemp, -maxHum].includes(Infinity)) {
 				if (i === 0) {
 					console.error( "There is insufficient data to support watering calculation from local PWS." );
 					throw new CodedError( ErrorCode.InsufficientWeatherData );
@@ -187,9 +195,9 @@ if ( process.env.WEATHER_PROVIDER === "local" && process.env.LOCAL_PERSISTENCE )
 
 interface Observation {
 	timestamp: number;
-	temp: number;
-	humidity: number;
-	windSpeed: number;
-	solarRadiation: number;
-	precip: number;
+	temp: number | undefined;
+	humidity: number | undefined;
+	windSpeed: number | undefined;
+	solarRadiation: number | undefined;  // Optional - many PWS don't have solar sensors
+	precip: number | undefined;
 }
