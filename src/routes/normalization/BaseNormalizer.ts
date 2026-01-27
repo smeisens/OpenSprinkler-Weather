@@ -1,5 +1,5 @@
 import { GeoCoordinates, WateringData, NormalizedWateringData, ValidationResult } from '../../types';
-import { getTZ } from '../weather';
+import { geoTZ } from 'geo-tz';
 import { TZDate } from '@date-fns/tz';
 import { startOfDay, getUnixTime } from 'date-fns';
 

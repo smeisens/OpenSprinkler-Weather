@@ -2,20 +2,9 @@ import express from "express";
 import SunCalc from "suncalc";
 import geoTZ from "geo-tz";
 
-import {
-    WateringData,
-    GeoCoordinates,
-    PWS,
-    TimeData,
-    WeatherData,
-    WeatherProviderShortId,
-} from "../types";
+import {WateringData, GeoCoordinates,PWS,TimeData, WeatherData, WeatherProviderShortId,} from "../types";
 import { WeatherProvider } from "./weatherProviders/WeatherProvider";
-import {
-    AdjustmentMethod,
-    AdjustmentMethodResponse,
-    AdjustmentOptions,
-} from "./adjustmentMethods/AdjustmentMethod";
+import {AdjustmentMethod, AdjustmentMethodResponse, AdjustmentOptions,} from "./adjustmentMethods/AdjustmentMethod";
 import ManualAdjustmentMethod from "./adjustmentMethods/ManualAdjustmentMethod";
 import ZimmermanAdjustmentMethod from "./adjustmentMethods/ZimmermanAdjustmentMethod";
 import RainDelayAdjustmentMethod from "./adjustmentMethods/RainDelayAdjustmentMethod";

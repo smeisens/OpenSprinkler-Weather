@@ -13,7 +13,7 @@ RUN ash ./prepareData.sh 20
 RUN ash ./baseline.sh
 RUN rm Baseline_ETo_Data-Pass_*.bin
 
-FROM node:20-alpine AS build_node
+FROM node:lts-alpine AS build_node
 WORKDIR /weather
 
 COPY /tsconfig.json ./
@@ -22,10 +22,9 @@ RUN npm install --include=dev
 COPY /build.mjs ./
 
 COPY /src ./src
-ENV ESBUILD_LOG_LEVEL=debug
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:lts-alpine
 
 EXPOSE 3000
 EXPOSE 8080
