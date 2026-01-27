@@ -36,6 +36,14 @@ import GoogleMapsGeocoder from "./geocoders/GoogleMaps";
 import WUndergroundGeocoder from "./geocoders/WUnderground";
 import { TZDate } from "@date-fns/tz";
 
+// ============================================================================
+// NEU: Normalization imports
+// ============================================================================
+import { LocalNormalizer } from './normalization/normalizers/LocalNormalizer';
+import { OpenMeteoNormalizer } from './normalization/normalizers/OpenMeteoNormalizer';
+import { validateNormalizedData } from './normalization/NormalizedDataValidator';
+// ============================================================================
+
 const WEATHER_PROVIDERS: { [K in Exclude<WeatherProviderShortId, "mock">]: WeatherProvider } = {
     Apple: new AppleWeatherProvider(),
     AW: new AccuWeatherWeatherProvider(),
@@ -69,52 +77,6 @@ const filters = {
     time: /(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})([+-])(\d{2})(\d{2})/,
     timezone: /^()()()()()()([+-])(\d{2})(\d{2})/,
 };
-
-
-import { LocalNormalizer } from './normalization/normalizers/LocalNormalizer';
-import { OpenMeteoNormalizer } from './normalization/normalizers/OpenMeteoNormalizer';
-import { validateNormalizedData } from './normalization/NormalizedDataValidator';
-
-// ---- TEMP TEST HOOK ---------------------------------
-
-if (process.env.NORM_TEST === 'true') {
-    let normalizer;
-
-    if (weatherProvider === 'local') {
-        normalizer = new LocalNormalizer();
-    } else if (weatherProvider === 'openmeteo') {
-        normalizer = new OpenMeteoNormalizer();
-    }
-
-    if (normalizer) {
-        const normalized = normalizer.normalizeWateringData(
-            wateringData,
-            coordinates
-        );
-
-        validateNormalizedData(
-            {
-                historical: normalized,
-                forecast: [],
-                metadata: {
-                    provider: weatherProvider,
-                    dataSource: 'local',
-                    timezone: 'auto',
-                    coordinates,
-                    elevation,
-                    historicalDays: normalized.length,
-                    forecastDays: 0,
-                    oldestDate: new Date(),
-                    newestDate: new Date(),
-                    normalized: true
-                }
-            },
-            { method: adjustmentMethod }
-        );
-    }
-}
-// ------------------------------------------------------
-
 
 /** AdjustmentMethods mapped to their numeric IDs. */
 const ADJUSTMENT_METHOD: { [key: number]: AdjustmentMethod } = {
@@ -692,3 +654,111 @@ export function keyToUse(defaultKey: string, pws: PWS): string {
         throw new CodedError(ErrorCode.NoAPIKeyProvided);
     }
 }
+
+// ============================================================================
+// NEU: Test-Route für Normalisierung
+// Diese Funktion testet die Normalisierung von Wetterdaten
+// Aufruf: GET /test-normalization?provider=OpenMeteo&lat=37.7749&lon=-122.4194
+// ============================================================================
+/**
+ * TEST ROUTE: Normalisierungs-Test
+ * GET /test-normalization?provider=local&lat=37.7749&lon=-122.4194
+ */
+export const testNormalization = async function(req: express.Request, res: express.Response) {
+    try {
+        const provider = req.query.provider as string || 'OpenMeteo';
+        const lat = parseFloat(req.query.lat as string) || 37.7749;
+        const lon = parseFloat(req.query.lon as string) || -122.4194;
+        const coordinates: GeoCoordinates = [lat, lon];
+
+        console.log(`[TEST] Testing normalization for provider: ${provider}`);
+
+        // Hole Weather Provider
+        const weatherProvider = WEATHER_PROVIDERS[provider] || WEATHER_PROVIDERS['OpenMeteo'];
+
+        // Hole Daten
+        const wateringDataResult = await weatherProvider.getWateringData(coordinates, undefined);
+        const wateringData = wateringDataResult.value;
+
+        // Wähle Normalizer
+        let normalizer;
+        if (provider === 'local') {
+            normalizer = new LocalNormalizer();
+        } else if (provider === 'OpenMeteo') {
+            normalizer = new OpenMeteoNormalizer();
+        } else {
+            return res.status(400).json({
+                error: 'Unsupported provider',
+                supported: ['local', 'OpenMeteo']
+            });
+        }
+
+        // Normalisiere
+        const normalized = normalizer.normalizeWateringData(wateringData, coordinates);
+
+        // Validiere
+        const validationResult = validateNormalizedData(
+            {
+                historical: normalized,
+                forecast: [],
+                metadata: {
+                    provider: provider,
+                    dataSource: 'cloud',
+                    timezone: getTZ(coordinates),
+                    coordinates,
+                    elevation: 0,
+                    historicalDays: normalized.length,
+                    forecastDays: 0,
+                    oldestDate: new Date(normalized[normalized.length - 1].timestamp * 1000),
+                    newestDate: new Date(normalized[0].timestamp * 1000),
+                    normalized: true
+                }
+            },
+            { method: 'Zimmerman' }
+        );
+
+        // Response
+        res.json({
+            success: true,
+            provider: provider,
+            rawData: {
+                count: wateringData.length,
+                first: wateringData[0],
+                last: wateringData[wateringData.length - 1]
+            },
+            normalized: {
+                count: normalized.length,
+                first: normalized[0],
+                last: normalized[normalized.length - 1]
+            },
+            validation: validationResult
+        });
+
+    } catch (error) {
+        console.error('[TEST] Error:', error);
+        res.status(500).json({
+            error: error.message,
+            stack: error.stack
+        });
+    }
+};
+// ============================================================================
+
+// ============================================================================
+// NEU: Router Setup
+// Registriert alle HTTP Routes
+// ============================================================================
+const router = express.Router();
+
+// Standard Routes
+router.get("/", getWeatherData);
+router.get("/weatherID.py", getWateringData);
+
+// TEST ROUTE (nur wenn NORM_TEST Environment Variable gesetzt ist)
+if (process.env.NORM_TEST === 'true') {
+    router.get("/test-normalization", testNormalization);
+    console.log('[NORM_TEST] Test route /test-normalization aktiviert');
+}
+
+export default router;
+// ============================================================================
