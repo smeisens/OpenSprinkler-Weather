@@ -654,15 +654,9 @@ export function keyToUse(defaultKey: string, pws: PWS): string {
         throw new CodedError(ErrorCode.NoAPIKeyProvided);
     }
 }
-
-// ============================================================================
-// NEU: Test-Route für Normalisierung
-// Diese Funktion testet die Normalisierung von Wetterdaten
-// Aufruf: GET /test-normalization?provider=OpenMeteo&lat=37.7749&lon=-122.4194
-// ============================================================================
 /**
  * TEST ROUTE: Normalisierungs-Test
- * GET /test-normalization?provider=local&lat=37.7749&lon=-122.4194
+ * Nur aktiv wenn NORM_TEST=true
  */
 export const testNormalization = async function(req: express.Request, res: express.Response) {
     try {
@@ -673,14 +667,10 @@ export const testNormalization = async function(req: express.Request, res: expre
 
         console.log(`[TEST] Testing normalization for provider: ${provider}`);
 
-        // Hole Weather Provider
         const weatherProvider = WEATHER_PROVIDERS[provider] || WEATHER_PROVIDERS['OpenMeteo'];
-
-        // Hole Daten
         const wateringDataResult = await weatherProvider.getWateringData(coordinates, undefined);
         const wateringData = wateringDataResult.value;
 
-        // Wähle Normalizer
         let normalizer;
         if (provider === 'local') {
             normalizer = new LocalNormalizer();
@@ -693,10 +683,8 @@ export const testNormalization = async function(req: express.Request, res: expre
             });
         }
 
-        // Normalisiere
         const normalized = normalizer.normalizeWateringData(wateringData, coordinates);
 
-        // Validiere
         const validationResult = validateNormalizedData(
             {
                 historical: normalized,
@@ -717,7 +705,6 @@ export const testNormalization = async function(req: express.Request, res: expre
             { method: 'Zimmerman' }
         );
 
-        // Response
         res.json({
             success: true,
             provider: provider,
@@ -742,23 +729,3 @@ export const testNormalization = async function(req: express.Request, res: expre
         });
     }
 };
-// ============================================================================
-
-// ============================================================================
-// NEU: Router Setup
-// Registriert alle HTTP Routes
-// ============================================================================
-const router = express.Router();
-
-// Standard Routes
-router.get("/", getWeatherData);
-router.get("/weatherID.py", getWateringData);
-
-// TEST ROUTE (nur wenn NORM_TEST Environment Variable gesetzt ist)
-if (process.env.NORM_TEST === 'true') {
-    router.get("/test-normalization", testNormalization);
-    console.log('[NORM_TEST] Test route /test-normalization aktiviert');
-}
-
-export default router;
-// ============================================================================

@@ -4,7 +4,7 @@ import './bootstrap';
 import express from "express";
 import cors from "cors";
 
-import { getWateringData, getWeatherData } from "./routes/weather";
+import { getWateringData, getWeatherData, testNormalization } from "./routes/weather";
 import { captureWUStream } from "./routes/weatherProviders/local";
 import { getBaselineETo } from "./routes/baselineETo";
 import {default as packageJson} from "../package.json";
@@ -80,3 +80,9 @@ app.listen( port, host, function() {
 		console.log( "%s now listening for local weather stream", packageJson.description );
 	}
 } );
+
+// Test route for normalization (only if NORM_TEST=true)
+if (process.env.NORM_TEST === 'true') {
+    app.get("/test-normalization", testNormalization);
+    console.log("Test route /test-normalization enabled");
+}
