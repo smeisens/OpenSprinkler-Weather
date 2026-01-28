@@ -19,10 +19,14 @@ let lastRainCount = 0;  // FIXED: War undefined, jetzt 0
 const LOCAL_OBSERVATION_DAYS = 7;
 
 // ============================================================================
-// FIXED: LOCAL_PERSIST_PATH aus Environment Variable oder Default
+// FIXED: Verwende PERSISTENCE_LOCATION (wie geocoderCache)
+// Fallback zu LOCAL_PERSIST_PATH für Backward-Kompatibilität
+// Auto-create directory wie bei geocoderCache
 // ============================================================================
-const LOCAL_PERSIST_PATH = process.env.LOCAL_PERSIST_PATH || ".";
-const OBSERVATIONS_FILE = path.join(LOCAL_PERSIST_PATH, "observations.json");
+const PERSIST_DIR = process.env.PERSISTENCE_LOCATION
+	|| process.env.LOCAL_PERSIST_PATH
+	|| path.join(__dirname, '..', '..', 'data');
+const OBSERVATIONS_FILE = path.join(PERSIST_DIR, "observations.json");
 
 // ============================================================================
 // FIXED: Rückgabetyp number | undefined (wie im GitHub Commit)
@@ -185,11 +189,16 @@ export default class LocalWeatherProvider extends WeatherProvider {
 }
 
 // ============================================================================
-// FIXED: Verwende LOCAL_PERSIST_PATH / OBSERVATIONS_FILE
+// FIXED: Auto-create directory wie bei geocoderCache
+// FIXED: Verwende PERSIST_DIR / OBSERVATIONS_FILE
 // ============================================================================
 function saveQueue() {
 	queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < (LOCAL_OBSERVATION_DAYS+1)*24*60*60 );
 	try {
+		// Ensure directory exists before writing (like geocoderCache does)
+		if (!fs.existsSync(PERSIST_DIR)) {
+			fs.mkdirSync(PERSIST_DIR, { recursive: true });
+		}
 		fs.writeFileSync( OBSERVATIONS_FILE , JSON.stringify( queue ), "utf8" );
 	} catch ( err ) {
 		console.error( "Error saving historical observations to local storage.", err );
@@ -197,6 +206,12 @@ function saveQueue() {
 }
 
 if ( process.env.WEATHER_PROVIDER === "local" && process.env.LOCAL_PERSISTENCE ) {
+	// Ensure directory exists before reading (like geocoderCache does)
+	if (!fs.existsSync(PERSIST_DIR)) {
+		fs.mkdirSync(PERSIST_DIR, { recursive: true });
+		console.log(`Created persistence directory: ${PERSIST_DIR}`);
+	}
+
 	if ( fs.existsSync( OBSERVATIONS_FILE ) ) {
 		try {
 			queue = JSON.parse( fs.readFileSync( OBSERVATIONS_FILE, "utf8" ) );
