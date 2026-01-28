@@ -386,7 +386,11 @@ export const getWateringData = async function( req: express.Request, res: expres
 		provider = process.env.WEATHER_PROVIDER;
 	}
 
-	if( pws && pws.id ){
+	// ============================================================================
+	// FIXED: Explicit provider (like "local") should override PWS logic
+	// Only use PWS_WEATHER_PROVIDER if provider is explicitly "WU" or not set
+	// ============================================================================
+	if( pws && pws.id && (!provider || provider === "WU") ){
 		weatherProvider = PWS_WEATHER_PROVIDER;
 	}else{
 		if (typeof WEATHER_PROVIDERS[provider] === 'object') {
