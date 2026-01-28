@@ -16,6 +16,8 @@ RUN rm Baseline_ETo_Data-Pass_*.bin
 FROM node:lts-alpine AS build_node
 WORKDIR /weather
 
+RUN mkdir -p /data
+
 COPY /tsconfig.json ./
 COPY /package.json ./
 RUN npm install
@@ -34,5 +36,9 @@ COPY /package.json ./
 RUN mkdir baselineEToData
 COPY --from=build_eto /eto/Baseline_ETo_Data.bin ./baselineEToData
 COPY --from=build_node /weather/dist ./dist
+
+ENV PERSISTENCE_LOCATION=/data
+
+VOLUME /data
 
 CMD ["npm", "run", "start"]
