@@ -15,3 +15,4 @@ geocoderCache.json
 dist
 pnpm-lock.yaml
 package-lock.json
+*.bin filter=lfs diff=lfs merge=lfs -text
