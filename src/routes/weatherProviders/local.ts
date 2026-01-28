@@ -1,5 +1,6 @@
 import express	from "express";
 import fs from "fs";
+import path from "path";
 import { startOfDay, subDays, getUnixTime } from "date-fns";
 import { localTime } from "../weather";
 
@@ -18,7 +19,14 @@ let lastRainCount = 0;  // FIXED: War undefined, jetzt 0
 const LOCAL_OBSERVATION_DAYS = 7;
 
 // ============================================================================
-// FIXED: Rückgabetyp number | undefined (vorher nur number)
+// FIXED: LOCAL_PERSIST_PATH aus Environment Variable oder Default
+// ============================================================================
+const LOCAL_PERSIST_PATH = process.env.LOCAL_PERSIST_PATH || ".";
+const OBSERVATIONS_FILE = path.join(LOCAL_PERSIST_PATH, "observations.json");
+
+// ============================================================================
+// FIXED: Rückgabetyp number | undefined (wie im GitHub Commit)
+// FIXED: Neue Logik - return undefined wenn key nicht existiert, NaN, oder -9999
 // ============================================================================
 function getMeasurement(req: express.Request, key: string): number | undefined {
 	if (!(key in req.query)) return undefined;
@@ -176,26 +184,31 @@ export default class LocalWeatherProvider extends WeatherProvider {
 
 }
 
+// ============================================================================
+// FIXED: Verwende LOCAL_PERSIST_PATH / OBSERVATIONS_FILE
+// ============================================================================
 function saveQueue() {
 	queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < (LOCAL_OBSERVATION_DAYS+1)*24*60*60 );
 	try {
-		fs.writeFileSync( "observations.json" , JSON.stringify( queue ), "utf8" );
+		fs.writeFileSync( OBSERVATIONS_FILE , JSON.stringify( queue ), "utf8" );
 	} catch ( err ) {
 		console.error( "Error saving historical observations to local storage.", err );
 	}
 }
 
 if ( process.env.WEATHER_PROVIDER === "local" && process.env.LOCAL_PERSISTENCE ) {
-	if ( fs.existsSync( "observations.json" ) ) {
+	if ( fs.existsSync( OBSERVATIONS_FILE ) ) {
 		try {
-			queue = JSON.parse( fs.readFileSync( "observations.json", "utf8" ) );
+			queue = JSON.parse( fs.readFileSync( OBSERVATIONS_FILE, "utf8" ) );
 			queue = queue.filter( obs => Math.floor(Date.now()/1000) - obs.timestamp < (LOCAL_OBSERVATION_DAYS+1)*24*60*60 );
+			console.log(`Loaded ${queue.length} observations from ${OBSERVATIONS_FILE}`);
 		} catch ( err ) {
 			console.error( "Error reading historical observations from local storage.", err );
 			queue = [];
 		}
 	}
 	setInterval( saveQueue, 1000 * 60 * 30 );
+	console.log(`Local persistence enabled. Saving to: ${OBSERVATIONS_FILE}`);
 }
 
 interface Observation {
