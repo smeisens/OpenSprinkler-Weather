@@ -1,9 +1,3 @@
-FROM alpine:latest AS build_eto
-WORKDIR /eto
-
-RUN apk add --no-cache wget && \
-    wget -O Baseline_ETo_Data.bin https://wetter.arch-sigi.de/OS-WS/Baseline_ETo_Data.bin
-
 FROM node:lts-alpine AS build_node
 WORKDIR /weather
 
@@ -22,11 +16,13 @@ EXPOSE 8080
 
 WORKDIR /weather
 COPY /package.json ./
-RUN mkdir baselineEToData
+RUN npm install --omit=dev
 
+RUN mkdir baselineEToData
 RUN mkdir -p /data
 
-COPY --from=build_eto /eto/Baseline_ETo_Data.bin ./baselineEToData
+# Use pre-built Baseline ETo data from repository (via Git LFS)
+COPY /baselineEToData/Baseline_ETo_Data.bin ./baselineEToData/
 COPY --from=build_node /weather/dist ./dist
 
 ENV PERSISTENCE_LOCATION=/data
