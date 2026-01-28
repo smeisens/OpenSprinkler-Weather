@@ -140,9 +140,10 @@ export default class LocalWeatherProvider extends WeatherProvider {
 			const windSum  = dayObs.reduce((sum, obs) => obs.windSpeed !== undefined && !isNaN(obs.windSpeed) && ++cWind ? sum + obs.windSpeed : sum, 0);
 			const avgSolar = cSolar > 0 ? solarSum / cSolar : undefined;
 			const avgWind  = cWind > 0 ? windSum / cWind : undefined;
-			// 5. Verify REQUIRED metrics present (temp, humidity, precip)
+			// 5. Verify REQUIRED metrics present (temp, humidity)
+			// Precip can be 0 on dry days, so we only check temp and humidity counters
 			// Solar and Wind are optional - many PWS don't have these sensors
-			if (!(cTemp && cHumidity && cPrecip)
+			if (!(cTemp && cHumidity)
 				|| [minTemp, minHum, -maxTemp, -maxHum].includes(Infinity)) {
 				if (i === 0) {
 					console.error( "There is insufficient data to support watering calculation from local PWS." );
