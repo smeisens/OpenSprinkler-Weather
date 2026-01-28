@@ -1,17 +1,10 @@
 FROM alpine:latest AS build_eto
 WORKDIR /eto
 
-RUN apk add --no-cache tiff imagemagick gcc libc-dev build-base wget
-
-COPY /baselineEToData/dataPreparer.c ./
-COPY /baselineEToData/prepareData.sh ./
-COPY /baselineEToData/baseline.sh ./
-
-RUN chmod +x ./prepareData.sh ./baseline.sh
-
-RUN ash ./prepareData.sh 20
-RUN ash ./baseline.sh
-RUN rm Baseline_ETo_Data-Pass_*.bin
+# Download pre-built Baseline ETo data instead of compiling from source
+# (Original source files.ntsg.umt.edu is no longer available)
+RUN apk add --no-cache wget && \
+    wget -O Baseline_ETo_Data.bin https://wetter.arch-sigi.de/OS-WS/Baseline_ETo_Data.bin
 
 FROM node:lts-alpine AS build_node
 WORKDIR /weather
