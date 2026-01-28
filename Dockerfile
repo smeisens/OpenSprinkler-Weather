@@ -12,7 +12,7 @@ WORKDIR /weather
 
 COPY /tsconfig.json ./
 COPY /package.json ./
-RUN npm install --include=dev
+RUN npm install
 COPY /build.mjs ./
 
 COPY /src ./src
@@ -25,9 +25,8 @@ EXPOSE 8080
 
 WORKDIR /weather
 COPY /package.json ./
-RUN npm install
-
 RUN mkdir baselineEToData
+
 RUN mkdir -p /data
 
 COPY --from=build_eto /eto/Baseline_ETo_Data.bin ./baselineEToData
