@@ -25,7 +25,7 @@ EXPOSE 8080
 
 WORKDIR /weather
 COPY /package.json ./
-RUN npm install --omit=dev
+RUN npm install
 
 RUN mkdir baselineEToData
 RUN mkdir -p /data
