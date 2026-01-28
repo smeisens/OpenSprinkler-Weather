@@ -31,8 +31,9 @@ EXPOSE 8080
 
 WORKDIR /weather
 COPY /package.json ./
-RUN mkdir baselineEToData
+RUN npm install --omit=dev
 
+RUN mkdir baselineEToData
 RUN mkdir -p /data
 
 COPY --from=build_eto /eto/Baseline_ETo_Data.bin ./baselineEToData
