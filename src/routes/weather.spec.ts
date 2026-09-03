@@ -180,26 +180,24 @@ describe("Weather Data (getWeatherData)", () => {
 	};
 
 	describe("mergeForecastWeatherData", () => {
-		it("merges forecast, precip, minTemp, and maxTemp while keeping other fields from the main provider", () => {
-			const result = mergeForecastWeatherData(mainWeather, forecastWeather);
+    it("merges forecast, precip, minTemp, maxTemp, and weatherProvider from the forecast provider, keeping temp/humidity/wind/raining from the main provider", () => {
+        const result = mergeForecastWeatherData(mainWeather, forecastWeather);
 
-			// Unchanged: still sourced from the main provider (local).
-			expect(result.weatherProvider).to.equal("local");
-			expect(result.temp).to.equal(68);
-			expect(result.humidity).to.equal(55);
-			expect(result.wind).to.equal(4);
-			expect(result.raining).to.equal(false);
+        // Unchanged: still sourced from the main provider (local).
+        expect(result.temp).to.equal(68);
+        expect(result.humidity).to.equal(55);
+        expect(result.wind).to.equal(4);
+        expect(result.raining).to.equal(false);
 
-			// Merged in: now sourced from the forecast provider (OpenMeteo).
-			expect(result.forecast).to.eql(forecastWeather.forecast);
-			expect(result.precip).to.equal(0.25);
-			expect(result.minTemp).to.equal(55);
-			expect(result.maxTemp).to.equal(72);
-		});
-
-		it("fails open and returns the weather data unchanged when no forecast was fetched", () => {
-			expect(mergeForecastWeatherData(mainWeather, undefined)).to.equal(mainWeather);
-		});
+        // Merged in: now sourced from the forecast provider (OpenMeteo), including attribution -
+        // so the App's attribution display (once it prefers weatherProvider, see
+        // OpenSprinkler-App#306) shows the actual forecast source rather than the main provider.
+        expect(result.weatherProvider).to.equal("OpenMeteo");
+        expect(result.forecast).to.eql(forecastWeather.forecast);
+        expect(result.precip).to.equal(0.25);
+        expect(result.minTemp).to.equal(55);
+        expect(result.maxTemp).to.equal(72);
+    });
 	});
 
 	describe("fetchForecastWeatherData", () => {
