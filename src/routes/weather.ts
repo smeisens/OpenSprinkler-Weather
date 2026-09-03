@@ -30,6 +30,7 @@ import WUndergroundWeatherProvider from "./weatherProviders/WUnderground";
 import AppleWeatherProvider from "./weatherProviders/Apple";
 import AccuWeatherWeatherProvider from "./weatherProviders/AccuWeather";
 import DWDWeatherProvider from "./weatherProviders/DWD";
+import GeoSphereWeatherProvider from "./weatherProviders/GeoSphere";
 import LocalWeatherProvider from "./weatherProviders/local";
 import OpenMeteoWeatherProvider from "./weatherProviders/OpenMeteo";
 import PirateWeatherWeatherProvider from "./weatherProviders/PirateWeather";
@@ -48,6 +49,7 @@ const WEATHER_PROVIDERS: { [K in Exclude<WeatherProviderShortId, "mock">]: Weath
     OWM: new OWMWeatherProvider(),
     PW: new PirateWeatherWeatherProvider(),
     WU: new WUndergroundWeatherProvider(),
+    Geosphere: new GeoSphereWeatherProvider(),
 };
 
 const GEOCODER_FACTORIES: { [name: string]: () => Geocoder } = {
