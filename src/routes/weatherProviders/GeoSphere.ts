@@ -97,7 +97,7 @@ export default class GeoSphereWeatherProvider extends WeatherProvider {
 			}
 
 			data.push( {
-				weatherProvider: "Geosphere",
+				weatherProvider: "GeoSphere",
 				temp: this.C2F( temp ),
 				humidity: humidity,
 				precip: this.mm2inch( precip ),
@@ -128,7 +128,7 @@ export default class GeoSphereWeatherProvider extends WeatherProvider {
 		const { icon, description } = this.mapWeatherSymbol( current.symbol );
 
 		const weather: WeatherData = {
-			weatherProvider: "Geosphere",
+			weatherProvider: "GeoSphere",
 			temp: this.C2F( current.temperature ),
 			humidity: current.humidity,
 			wind: this.mps2mph( Math.sqrt( current.windU ** 2 + current.windV ** 2 ) ),
