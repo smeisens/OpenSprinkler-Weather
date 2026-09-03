@@ -433,6 +433,7 @@ export function mergeForecastWeatherData( weather: WeatherData, forecast?: Weath
 		precip: forecast.precip,
 		minTemp: forecast.minTemp,
 		maxTemp: forecast.maxTemp,
+        weatherProvider: forecast.weatherProvider,
 	};
 }
 
