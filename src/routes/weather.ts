@@ -49,7 +49,7 @@ const WEATHER_PROVIDERS: { [K in Exclude<WeatherProviderShortId, "mock">]: Weath
     OWM: new OWMWeatherProvider(),
     PW: new PirateWeatherWeatherProvider(),
     WU: new WUndergroundWeatherProvider(),
-    Geosphere: new GeoSphereWeatherProvider(),
+    GeoSphere: new GeoSphereWeatherProvider(),
 };
 
 const GEOCODER_FACTORIES: { [name: string]: () => Geocoder } = {
