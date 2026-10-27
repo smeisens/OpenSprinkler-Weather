@@ -12,6 +12,7 @@ Provider notes:
 
 - [Open-Meteo](open-meteo.md)
 - [DWD / Bright Sky](dwd.md)
+- [GeoSphere Austria](geosphere.md)
 - [WeeWX](weewx.md)
 - [Davis Vantage](davis-vantage.md)
 - [Netatmo](netatmo.md)

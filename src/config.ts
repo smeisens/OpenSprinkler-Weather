@@ -12,15 +12,15 @@ export interface PersistenceEnvironment {
 
 const DEFAULT_SERVER_PORT = 3000;
 
-export type ForecastProviderName = "OpenMeteo" | "DWD" | "Apple" | "OWM" | "AW" | "PW";
+export type ForecastProviderName = "OpenMeteo" | "DWD" | "GeoSphere" | "Apple" | "OWM" | "AW" | "PW";
 
 /** Validate the optional forecast override before the server starts accepting requests. */
 export function resolveForecastProviderName(environment: { [key: string]: string | undefined } = process.env): ForecastProviderName | undefined {
 	const provider = environment.FORECAST_WEATHER_PROVIDER?.trim();
 	if (!provider) return undefined;
-	const supported: readonly string[] = ["OpenMeteo", "DWD", "Apple", "OWM", "AW", "PW"];
+	const supported: readonly string[] = ["OpenMeteo", "DWD", "GeoSphere", "Apple", "OWM", "AW", "PW"];
 	if (!supported.includes(provider)) {
-		throw new Error("Invalid FORECAST_WEATHER_PROVIDER: expected OpenMeteo, DWD, Apple, OWM, AW, or PW.");
+		throw new Error("Invalid FORECAST_WEATHER_PROVIDER: expected OpenMeteo, DWD, GeoSphere, Apple, OWM, AW, or PW.");
 	}
 	const credential = { OWM: "OWM_API_KEY", AW: "ACCUWEATHER_API_KEY", PW: "PIRATEWEATHER_API_KEY" }[provider];
 	if (credential && !environment[credential]?.trim()) {

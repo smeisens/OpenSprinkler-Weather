@@ -58,7 +58,7 @@ describe("Forecast provider configuration", () => {
 		}
 	});
 	it("accepts supported providers with their server credentials", () => {
-		for (const provider of ["OpenMeteo", "DWD", "Apple", "OWM", "AW", "PW"]) {
+		for (const provider of ["OpenMeteo", "DWD", "GeoSphere", "Apple", "OWM", "AW", "PW"]) {
 			expect(resolveForecastProviderName({ FORECAST_WEATHER_PROVIDER: provider,
 				OWM_API_KEY: "fixture", ACCUWEATHER_API_KEY: "fixture", PIRATEWEATHER_API_KEY: "fixture" })).to.equal(provider);
 		}

@@ -18,6 +18,7 @@ The service loads environment variables from the process environment and an opti
 | Apple WeatherKit | `Apple` | `APPLE_PRIVATE_KEY`, `APPLE_KEY_ID`, `APPLE_TEAM_ID`, `APPLE_SERVICE_ID` |
 | Open-Meteo | `OpenMeteo` | None |
 | DWD / Bright Sky | `DWD` | None; German locations only |
+| GeoSphere Austria | `GeoSphere` | None; Austrian locations only |
 | AccuWeather | `AW` | `ACCUWEATHER_API_KEY` |
 | OpenWeather | `OWM` | `OWM_API_KEY` |
 | Pirate Weather | `PW` | `PIRATEWEATHER_API_KEY` |
@@ -50,11 +51,11 @@ per-controller provider selection and WU station credentials. When both sources
 resolve to the same provider, the service reuses its original result and request
 credentials.
 
-Supported override values are `OpenMeteo`, `DWD`, `Apple`, `OWM`, `AW`, and `PW`.
+Supported override values are `OpenMeteo`, `DWD`, `GeoSphere`, `Apple`, `OWM`, `AW`, and `PW`.
 Use these exact short IDs; long names such as `AccuWeather` are not aliases.
 `OWM`, `AW`, and `PW` require their respective server API keys from the table
-above. Apple requires its normal server-side WeatherKit credentials; DWD retains
-its geographic coverage limits. A separate forecast provider never receives the
+above. Apple requires its normal server-side WeatherKit credentials; DWD and
+GeoSphere retain their geographic coverage limits. A separate forecast provider never receives the
 controller's main-provider key or station ID.
 
 Unknown overrides, `WU`, `local`, and keyed overrides without their server API

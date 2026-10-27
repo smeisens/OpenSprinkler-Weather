@@ -31,6 +31,7 @@ import WUndergroundWeatherProvider from "./weatherProviders/WUnderground";
 import AppleWeatherProvider from "./weatherProviders/Apple";
 import AccuWeatherWeatherProvider from "./weatherProviders/AccuWeather";
 import DWDWeatherProvider from "./weatherProviders/DWD";
+import GeoSphereWeatherProvider from "./weatherProviders/GeoSphere";
 import LocalWeatherProvider from "./weatherProviders/local";
 import OpenMeteoWeatherProvider from "./weatherProviders/OpenMeteo";
 import PirateWeatherWeatherProvider from "./weatherProviders/PirateWeather";
@@ -44,6 +45,7 @@ const WEATHER_PROVIDERS: { [K in Exclude<WeatherProviderShortId, "mock">]: Weath
     Apple: new AppleWeatherProvider(),
     AW: new AccuWeatherWeatherProvider(),
     DWD: new DWDWeatherProvider(),
+    GeoSphere: new GeoSphereWeatherProvider(),
     local: new LocalWeatherProvider(),
     OpenMeteo: new OpenMeteoWeatherProvider(),
     OWM: new OWMWeatherProvider(),
